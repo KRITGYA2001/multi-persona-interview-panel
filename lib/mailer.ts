@@ -20,6 +20,8 @@ function renderReportText(report: FeedbackReport): string {
   lines.push('');
   lines.push(report.overallSummary);
   lines.push('');
+  lines.push(`Hiring likelihood: ${report.hiringScore}/100`);
+  lines.push('');
 
   if (report.focusAreaCoverage.length > 0) {
     lines.push('Focus area coverage:');
@@ -87,6 +89,7 @@ function renderReportHtml(report: FeedbackReport): string {
     <div style="font-family:sans-serif;color:#222;line-height:1.5">
       <h2>Interview report — ${escapeHtml(report.roleTitle)}</h2>
       ${report.candidateName ? `<p style="margin:0 0 12px"><strong>Candidate:</strong> ${escapeHtml(report.candidateName)}</p>` : ''}
+      <p style="margin:0 0 12px"><strong>Hiring likelihood:</strong> ${report.hiringScore}/100</p>
       <p>${escapeHtml(report.overallSummary)}</p>
       ${coverageRows ? `<h3>Focus area coverage</h3><ul>${coverageRows}</ul>` : ''}
       ${personaSections}

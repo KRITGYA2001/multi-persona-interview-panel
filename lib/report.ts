@@ -9,7 +9,7 @@ import { PERSONA_IDS, getPersonaDefinition } from '@/lib/personas';
 import { groqRespond } from '@/lib/groq';
 
 const REPORT_SYSTEM_PROMPT =
-  'You are an assistant that writes structured candidate feedback reports for a job interview panel. Respond with ONLY a JSON object matching this shape: {"overallSummary": string, "focusAreaCoverage": [{"focusArea": string, "covered": boolean}], "personas": [{"persona": string, "label": string, "strengths": string[], "concerns": string[], "notableQuotes": string[]}]}. Be specific and evidence-based, quoting the candidate where useful. Do not include markdown formatting or any text outside the JSON object.';
+  'You are an assistant that writes structured candidate feedback reports for a job interview panel. Respond with ONLY a JSON object matching this shape: {"overallSummary": string, "focusAreaCoverage": [{"focusArea": string, "covered": boolean}], "personas": [{"persona": string, "label": string, "strengths": string[], "concerns": string[], "notableQuotes": string[]}], "hiringScore": number}. "hiringScore" is your overall assessment of how likely this candidate should be hired for this specific role, on a 0-100 scale (0 = clear no-hire, 100 = clear strong hire), weighing all panelists\' findings together. Be specific and evidence-based, quoting the candidate where useful. Do not include markdown formatting or any text outside the JSON object.';
 
 export type { ReportTranscriptTurn };
 
@@ -24,6 +24,41 @@ type ReportDeps = {
   createOpenAIClient: typeof createOpenAI;
   generateTextImpl: typeof generateText;
 };
+
+function clampScore(score: unknown): number | null {
+  if (typeof score !== 'number' || !Number.isFinite(score)) return null;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+// Deterministic fallback score used for the heuristic report path, and whenever
+// an LLM response omits or returns an invalid hiringScore.
+function computeHeuristicScore(
+  personas: FeedbackReportPersonaSection[],
+  focusAreaCoverage: { focusArea: string; covered: boolean }[],
+  totalCandidateTurns: number,
+): number {
+  if (totalCandidateTurns === 0) return 0;
+
+  const totalStrengths = personas.reduce((sum, p) => sum + p.strengths.length, 0);
+  const totalConcerns = personas.reduce((sum, p) => sum + p.concerns.length, 0);
+  const signalScore = totalStrengths - totalConcerns * 1.5;
+
+  const coverageRatio =
+    focusAreaCoverage.length > 0
+      ? focusAreaCoverage.filter((f) => f.covered).length / focusAreaCoverage.length
+      : 0.5;
+
+  return clampScore(45 + signalScore * 8 + coverageRatio * 25) ?? 0;
+}
+
+function sanitizeHiringScore(
+  candidate: unknown,
+  personas: FeedbackReportPersonaSection[],
+  focusAreaCoverage: { focusArea: string; covered: boolean }[],
+  totalCandidateTurns: number,
+): number {
+  return clampScore(candidate) ?? computeHeuristicScore(personas, focusAreaCoverage, totalCandidateTurns);
+}
 
 // Deterministic, no-external-call report built purely from transcript stats.
 // Used whenever the optional LLM env vars aren't set, and as a safety net if
@@ -92,6 +127,7 @@ function buildHeuristicReport(input: BuildFeedbackReportInput): FeedbackReport {
     overallSummary,
     focusAreaCoverage,
     personas,
+    hiringScore: computeHeuristicScore(personas, focusAreaCoverage, totalCandidateTurns),
     source: 'heuristic',
     generatedAt: new Date().toISOString(),
   };
@@ -106,7 +142,9 @@ function formatTranscriptForPrompt(transcript: ReportTranscriptTurn[]): string {
     .join('\n');
 }
 
-function tryParseReportJson(text: string): Omit<FeedbackReport, 'roleTitle' | 'source' | 'generatedAt'> | null {
+function tryParseReportJson(
+  text: string,
+): Omit<FeedbackReport, 'roleTitle' | 'source' | 'generatedAt' | 'hiringScore'> & { hiringScore?: unknown } | null {
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return null;
@@ -139,12 +177,19 @@ export function createFeedbackReportBuilder({ createOpenAIClient, generateTextIm
       if (groqText) {
         const parsed = tryParseReportJson(groqText);
         if (parsed) {
+          const totalCandidateTurns = input.transcript.filter((t) => t.speaker === 'candidate').length;
           return {
             roleTitle: input.roleTitle,
             candidateName: input.candidateName,
             overallSummary: parsed.overallSummary,
             focusAreaCoverage: parsed.focusAreaCoverage,
             personas: parsed.personas,
+            hiringScore: sanitizeHiringScore(
+              parsed.hiringScore,
+              parsed.personas,
+              parsed.focusAreaCoverage,
+              totalCandidateTurns,
+            ),
             source: 'llm',
             generatedAt: new Date().toISOString(),
           };
@@ -176,12 +221,19 @@ export function createFeedbackReportBuilder({ createOpenAIClient, generateTextIm
         return buildHeuristicReport(input);
       }
 
+      const totalCandidateTurns = input.transcript.filter((t) => t.speaker === 'candidate').length;
       return {
         roleTitle: input.roleTitle,
         candidateName: input.candidateName,
         overallSummary: parsed.overallSummary,
         focusAreaCoverage: parsed.focusAreaCoverage,
         personas: parsed.personas,
+        hiringScore: sanitizeHiringScore(
+          parsed.hiringScore,
+          parsed.personas,
+          parsed.focusAreaCoverage,
+          totalCandidateTurns,
+        ),
         source: 'llm',
         generatedAt: new Date().toISOString(),
       };

@@ -28,6 +28,14 @@ interface MicCheckProps {
    *  then — browser mic permission is already granted, so the conversation
    *  flow's own track creation won't re-prompt the candidate. */
   onConfirm: (candidateName: string) => void;
+  /** Name the recruiter entered at setup. When non-empty, the candidate's typed
+   *  name must match it (case/whitespace-insensitive) before Continue proceeds.
+   *  Empty for sessions created before candidate-name capture existed. */
+  expectedName: string;
+}
+
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 const ERROR_COPY: Record<MicCheckErrorKind, { title: string; detail: string }> = {
@@ -60,7 +68,7 @@ function classifyError(error: unknown): MicCheckErrorKind {
   return 'unknown';
 }
 
-export function MicCheck({ onConfirm }: MicCheckProps) {
+export function MicCheck({ onConfirm, expectedName }: MicCheckProps) {
   const [status, setStatus] = useState<MicCheckStatus>('idle');
   const [errorKind, setErrorKind] = useState<MicCheckErrorKind>('unknown');
   const [devices, setDevices] = useState<MicCheckDevice[]>([]);
@@ -168,9 +176,13 @@ export function MicCheck({ onConfirm }: MicCheckProps) {
       setNameError('Please enter your name.');
       return;
     }
+    if (expectedName && normalizeName(trimmedName) !== normalizeName(expectedName)) {
+      setNameError('This name doesn\'t match the name the recruiter provided for this interview.');
+      return;
+    }
     closeTrack();
     onConfirm(trimmedName);
-  }, [candidateName, closeTrack, onConfirm]);
+  }, [candidateName, closeTrack, expectedName, onConfirm]);
 
   const activeBars = Math.round(Math.min(1, level / 0.5) * METER_BAR_COUNT);
 

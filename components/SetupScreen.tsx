@@ -28,6 +28,7 @@ function defaultPersonaDurations(): Record<PersonaId, number> {
 
 export function SetupScreen() {
   const [recruiterEmail, setRecruiterEmail] = useState('');
+  const [candidateName, setCandidateName] = useState('');
   const [templateId, setTemplateId] = useState('software-engineer');
   const [roleTitle, setRoleTitle] = useState(ROLE_TEMPLATES[0].title);
   const [focusAreas, setFocusAreas] = useState<string[]>(ROLE_TEMPLATES[0].focusAreas);
@@ -92,6 +93,10 @@ export function SetupScreen() {
       setError('A valid recruiter email is required.');
       return;
     }
+    if (!candidateName.trim()) {
+      setError('Candidate name is required.');
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     try {
@@ -100,6 +105,7 @@ export function SetupScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recruiterEmail: recruiterEmail.trim(),
+          candidateName: candidateName.trim(),
           roleTitle: roleTitle.trim(),
           focusAreas,
           activePersonas: Array.from(activePersonas),
@@ -170,19 +176,33 @@ export function SetupScreen() {
         Configure the role and the panel, then generate a link for your candidate.
       </p>
 
-      {/* Recruiter email */}
-      <div className="mt-8">
-        <label className={labelClass}>Recruiter email</label>
-        <input
-          type="email"
-          value={recruiterEmail}
-          onChange={(e) => setRecruiterEmail(e.target.value)}
-          placeholder="you@company.com"
-          className={inputClass}
-        />
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          The detailed report is sent here once the interview ends.
-        </p>
+      {/* Recruiter email + candidate name */}
+      <div className="mt-8 grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
+        <div>
+          <label className={labelClass}>Recruiter email</label>
+          <input
+            type="email"
+            value={recruiterEmail}
+            onChange={(e) => setRecruiterEmail(e.target.value)}
+            placeholder="you@company.com"
+            className={inputClass}
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            The detailed report is sent here once the interview ends.
+          </p>
+        </div>
+        <div>
+          <label className={labelClass}>Candidate name</label>
+          <input
+            value={candidateName}
+            onChange={(e) => setCandidateName(e.target.value)}
+            placeholder="Jane Doe"
+            className={inputClass}
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            The candidate must enter this same name before the interview starts.
+          </p>
+        </div>
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-x-10 gap-y-8 md:grid-cols-2">

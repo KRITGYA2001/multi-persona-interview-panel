@@ -36,6 +36,8 @@ export interface FeedbackReport {
   overallSummary: string;
   focusAreaCoverage: { focusArea: string; covered: boolean }[];
   personas: FeedbackReportPersonaSection[];
+  /** Overall hiring likelihood for this role, 0-100. Recruiter-facing only (email), never shown to the candidate. */
+  hiringScore: number;
   source: 'llm' | 'heuristic';
   generatedAt: string;
 }

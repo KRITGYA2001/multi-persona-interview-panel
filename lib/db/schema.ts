@@ -10,6 +10,7 @@ export const sessions = pgTable("sessions", {
     .default(["technical", "product", "behavioral"]),
   channelName: text("channel_name").notNull(),
   recruiterEmail: text("recruiter_email"),
+  candidateName: text("candidate_name"),
   personaDurations: jsonb("persona_durations").$type<Record<string, number>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

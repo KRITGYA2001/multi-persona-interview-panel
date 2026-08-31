@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       ? body.activePersonas
       : ['technical', 'product', 'behavioral'];
     const recruiterEmail = typeof body.recruiterEmail === 'string' ? body.recruiterEmail.trim() : '';
+    const candidateName = typeof body.candidateName === 'string' ? body.candidateName.trim() : '';
     const personaDurations = normalizePersonaDurations(body.personaDurations, activePersonas);
 
     if (!roleTitle) {
@@ -51,6 +52,9 @@ export async function POST(request: NextRequest) {
     }
     if (!recruiterEmail || !EMAIL_PATTERN.test(recruiterEmail)) {
       return NextResponse.json({ error: 'A valid recruiterEmail is required' }, { status: 400 });
+    }
+    if (!candidateName) {
+      return NextResponse.json({ error: 'A candidate name is required' }, { status: 400 });
     }
 
     const [session] = await db
@@ -60,6 +64,7 @@ export async function POST(request: NextRequest) {
         focusAreas,
         activePersonas,
         recruiterEmail,
+        candidateName,
         personaDurations,
         channelName: generateChannelName(),
       })

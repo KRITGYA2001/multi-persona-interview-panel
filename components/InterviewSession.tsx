@@ -32,6 +32,7 @@ interface SessionData {
   activePersonas: string[];
   personaDurations: Record<string, number>;
   channelName: string;
+  candidateName: string | null;
 }
 
 const DEFAULT_PERSONA_MINUTES = 5;
@@ -370,7 +371,7 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
 
           {stage === 'mic-check' && (
             <div className="flex w-full flex-col items-center gap-4">
-              <MicCheck onConfirm={startConversation} />
+              <MicCheck onConfirm={startConversation} expectedName={session?.candidateName ?? ''} />
               {isLoading && (
                 <p className="text-xs text-muted-foreground">Connecting you to the panel...</p>
               )}

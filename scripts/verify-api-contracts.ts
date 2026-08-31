@@ -511,6 +511,12 @@ async function verifyReportHeuristicFallback() {
       report.focusAreaCoverage.length === 1 && report.focusAreaCoverage[0].covered === true,
       'buildFeedbackReport should mark focus areas mentioned by the candidate as covered',
     );
+    assert(
+      typeof report.hiringScore === 'number' &&
+        report.hiringScore >= 0 &&
+        report.hiringScore <= 100,
+      'buildFeedbackReport should include a hiringScore between 0 and 100',
+    );
   } finally {
     if (originalApiKey === undefined) {
       delete process.env.NEXT_LLM_API_KEY;
@@ -613,6 +619,28 @@ async function verifySessionRouteRejectsMissingRecruiterEmail() {
   );
 }
 
+async function verifySessionRouteRejectsMissingCandidateName() {
+  const { POST: createSession } = await import('../app/api/session/route');
+  const request = new NextRequest('http://localhost:3000/api/session', {
+    body: JSON.stringify({
+      roleTitle: 'Staff Engineer',
+      recruiterEmail: 'recruiter@example.com',
+    }),
+    method: 'POST',
+  });
+  const response = await createSession(request);
+  const body = await getJson(response);
+
+  assert(
+    response.status === 400,
+    'POST /api/session should reject a missing candidateName',
+  );
+  assert(
+    body.error === 'A candidate name is required',
+    'POST /api/session should explain the missing candidateName',
+  );
+}
+
 async function verifySessionRouteRejectsInvalidRecruiterEmail() {
   const { POST: createSession } = await import('../app/api/session/route');
   const request = new NextRequest('http://localhost:3000/api/session', {
@@ -646,6 +674,7 @@ async function main() {
   await verifyInviteAgentPersonaSwitchInjectsContext();
   await verifySessionRouteRejectsMissingRecruiterEmail();
   await verifySessionRouteRejectsInvalidRecruiterEmail();
+  await verifySessionRouteRejectsMissingCandidateName();
   await verifyReportRouteValidation();
   await verifyReportHeuristicFallback();
   await verifyStopConversationValidation();
