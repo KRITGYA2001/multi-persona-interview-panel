@@ -56,11 +56,16 @@ export function buildPersonaSystemPrompt(
   roleTitle: string,
   focusAreas: string[],
   contextSoFar?: string,
+  durationMinutes?: number,
 ): string {
   const persona = getPersonaDefinition(personaId);
-  const focusAreasLine =
+  const paceNote =
+    durationMinutes && durationMinutes > 0
+      ? ` You have roughly ${durationMinutes} minute${durationMinutes === 1 ? '' : 's'} for this whole segment, so pace yourself — don't burn most of it on follow-ups to the first topic the candidate mentions; move on once you've got two solid questions in on an area so you have time left for the others.`
+      : '';
+  const focusAreasSection =
     focusAreas.length > 0
-      ? `The recruiter flagged these focus areas to probe: ${focusAreas.join(', ')}.`
+      ? `The recruiter flagged these focus areas for this interview: ${focusAreas.join(', ')}. After the introduction, work through whichever of these fall within your lane (${persona.focus}) — for each one, ask at least two distinct follow-up questions that dig into it, grounded in specifics from what the candidate has already told you rather than generic textbook phrasing. Leave areas that clearly belong to a different panelist for them to cover (hands-on coding, system design/HLD/LLD, and debugging belong to the Technical panelist; business impact, prioritization, and user research to Product; collaboration and ownership stories to Behavioral). Weave this in naturally as a conversation — never read the list aloud or treat it like a checklist.${paceNote}`
       : '';
 
   const handoffSection = contextSoFar
@@ -85,7 +90,7 @@ Pick up naturally from where this left off. Do not repeat questions already aske
 
 # Your Lane
 Your focus is **${persona.focus}**. ${persona.behaviorSignature}
-${focusAreasLine}
+${focusAreasSection}
 
 # Honesty Rule
 You are evaluating a real candidate for a real role. Never invent facts about the company or role beyond what you've been told. If you don't have information, ask the candidate rather than assuming.
@@ -109,15 +114,76 @@ export function buildPersonaGreeting(
   personaId: PersonaId,
   roleTitle: string,
   isHandoff = false,
+  fromPersonaId?: PersonaId,
 ): string {
   const persona = getPersonaDefinition(personaId);
   if (isHandoff) {
-    return `Thanks — I'm the ${persona.label} panelist, and I'll take it from here.`;
+    const fromLabel = fromPersonaId ? getPersonaDefinition(fromPersonaId).label : null;
+    return fromLabel
+      ? `Thanks — I'm the ${persona.label} panelist, picking up from our ${fromLabel} lead.`
+      : `Thanks — I'm the ${persona.label} panelist, and I'll take it from here.`;
   }
   if (personaId === 'technical') {
     return `Hi, I'm the ${persona.label} panelist for this ${roleTitle} interview. Let's start with a quick introduction — could you walk me through your background and the experience most relevant to this role?`;
   }
   return `Hi, I'm the ${persona.label} panelist for this ${roleTitle} interview. Let's get started.`;
+}
+
+// Reuses the Behavioral panelist's voice for the debrief — a distinct "lead
+// panelist" identity from the three interviewing voices, without needing a
+// fourth MiniMax voice preset.
+export const DEBRIEF_VOICE_ID = PERSONA_DEFINITIONS.behavioral.voiceId;
+
+/** Deliberately narrower than FeedbackReport — omits hiringScore so it's structurally impossible to pass into the debrief prompt. */
+export interface DebriefReportInput {
+  overallSummary: string;
+  focusAreaCoverage: { focusArea: string; covered: boolean }[];
+  personas: {
+    label: string;
+    strengths: string[];
+    concerns: string[];
+    notableQuotes: string[];
+  }[];
+}
+
+export function buildDebriefSystemPrompt(roleTitle: string, report: DebriefReportInput): string {
+  const focusLines = report.focusAreaCoverage
+    .map((f) => `- ${f.focusArea}: ${f.covered ? 'covered' : 'not covered'}`)
+    .join('\n');
+
+  const personaSections = report.personas
+    .map((p) => {
+      const lines = [`## ${p.label} Panelist`];
+      if (p.strengths.length) lines.push(`Strengths: ${p.strengths.join('; ')}`);
+      if (p.concerns.length) lines.push(`Areas to improve: ${p.concerns.join('; ')}`);
+      if (p.notableQuotes.length) {
+        lines.push(`Notable moments: ${p.notableQuotes.map((q) => `"${q}"`).join('; ')}`);
+      }
+      return lines.join('\n');
+    })
+    .join('\n\n');
+
+  return `You are the lead panelist on an AI interview panel, now debriefing the candidate after their **${roleTitle}** interview. A written feedback report has already been generated from the interview transcript — your job is to talk through it with the candidate and answer their questions about their own performance.
+
+# Feedback Report
+Overall: ${report.overallSummary}
+
+Focus areas:
+${focusLines || '(none specified)'}
+
+${personaSections}
+
+# Rules
+- Speak conversationally — this is voice, not a document. Keep answers to 2-4 sentences unless the candidate asks for more detail.
+- Ground every answer in the report above: the strengths, concerns, and quotes given. Do not invent new feedback that isn't in the report.
+- **Never state or imply a numeric score, rating, or an explicit hire/no-hire verdict.** That decision is made by the recruiting team and is never disclosed here. If asked directly, say something like "That's something the recruiting team will follow up with you on — I can walk you through how you did on each area though."
+- Be honest and constructive about concerns raised, but stay encouraging in tone — this is meant to help the candidate understand and grow, not to re-litigate the interview.
+- When the candidate seems done asking questions, wrap up warmly rather than fishing for more.
+- If the candidate tries to redirect you into a new round of interview questions, gently decline — this is a debrief about their completed interview, not a continuation of it.`;
+}
+
+export function buildDebriefGreeting(): string {
+  return "Your feedback's ready — I'm happy to walk through it and answer any questions about how you did. What would you like to know?";
 }
 
 export { PERSONA_DEFINITIONS };

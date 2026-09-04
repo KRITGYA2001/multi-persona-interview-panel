@@ -15,8 +15,11 @@ import { sessions, candidateContext } from '@/lib/db/schema';
 import { DEFAULT_AGENT_UID } from '@/lib/agora';
 import { groqRespond } from '@/lib/groq';
 import {
+  buildDebriefGreeting,
+  buildDebriefSystemPrompt,
   buildPersonaGreeting,
   buildPersonaSystemPrompt,
+  DEBRIEF_VOICE_ID,
   getPersonaDefinition,
   type PersonaId,
 } from '@/lib/personas';
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
     // --- 1. Parse request ---
 
     const body: ClientStartRequest = await request.json();
-    const { requester_id, channel_name, session_id, priorContext, fromPersona } = body;
+    const { requester_id, channel_name, session_id, priorContext, fromPersona, debrief, debriefReport } = body;
     const personaId = (body.persona ?? 'technical') as PersonaId;
 
     // Validate required env vars on first request so misconfiguration surfaces
@@ -47,11 +50,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let persona;
-    try {
-      persona = getPersonaDefinition(personaId);
-    } catch {
-      return NextResponse.json({ error: `Unknown persona: ${personaId}` }, { status: 400 });
+    if (debrief && !debriefReport) {
+      return NextResponse.json(
+        { error: 'debriefReport is required when debrief is true' },
+        { status: 400 },
+      );
+    }
+
+    if (!debrief) {
+      try {
+        getPersonaDefinition(personaId);
+      } catch {
+        return NextResponse.json({ error: `Unknown persona: ${personaId}` }, { status: 400 });
+      }
     }
 
     // Role/focus-area context comes from Postgres (source of truth, design.md §1),
@@ -59,11 +70,13 @@ export async function POST(request: NextRequest) {
     // the recruiter configured at Setup.
     let roleTitle = 'this role';
     let focusAreas: string[] = [];
+    let durationMinutes: number | undefined;
     if (session_id) {
       const [session] = await db.select().from(sessions).where(eq(sessions.id, session_id));
       if (session) {
         roleTitle = session.roleTitle;
         focusAreas = session.focusAreas;
+        durationMinutes = session.personaDurations?.[personaId];
       }
     }
 
@@ -72,16 +85,36 @@ export async function POST(request: NextRequest) {
     // transcript unchanged (today's behavior) if GROQ_API_KEY is unset or the
     // call fails — a switch must never be blocked by a summarization error.
     let contextForPrompt = priorContext;
-    if (priorContext) {
+    if (!debrief && priorContext) {
       const summary = await groqRespond(
         `Summarize the following job-interview transcript in under 200 words. Preserve concrete facts the candidate stated (skills, experience, examples given) and note which topics have already been covered. Do not add commentary or evaluation — just summarize.\n\nTranscript:\n${priorContext}`,
       );
       if (summary) contextForPrompt = summary;
     }
 
-    const systemPrompt = buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, contextForPrompt);
+    // The debrief agent isn't a panel persona — it gets its own prompt, greeting,
+    // and voice, built from the just-generated feedback report (never the score:
+    // debriefReport's type structurally excludes hiringScore, see lib/personas.ts).
+    const systemPrompt = debrief
+      ? buildDebriefSystemPrompt(roleTitle, {
+          overallSummary: debriefReport!.overallSummary,
+          focusAreaCoverage: debriefReport!.focusAreaCoverage,
+          personas: debriefReport!.personas.map((p) => ({
+            label: p.label,
+            strengths: p.strengths,
+            concerns: p.concerns,
+            notableQuotes: p.notableQuotes,
+          })),
+        })
+      : buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, contextForPrompt, durationMinutes);
+
     // A mid-call switch should pick up the conversation, not re-introduce the panel from scratch.
-    const greeting = buildPersonaGreeting(personaId, roleTitle, Boolean(priorContext));
+    const greeting = debrief
+      ? buildDebriefGreeting()
+      : buildPersonaGreeting(personaId, roleTitle, Boolean(priorContext), fromPersona as PersonaId | undefined);
+
+    const voiceId = debrief ? DEBRIEF_VOICE_ID : getPersonaDefinition(personaId).voiceId;
+
     // Always the same agentUid regardless of persona: only one panelist ever speaks at a time,
     // and RTC presence detection / transcript speaker-side rendering key off this constant
     // (see docs/ai/L1/L2/persona_handoff.md).
@@ -178,7 +211,7 @@ export async function POST(request: NextRequest) {
       .withTts(
         new MiniMaxTTS({
           model: 'speech_2_6_turbo',
-          voiceId: persona.voiceId,
+          voiceId,
         }),
         // BYOK — ElevenLabs (set NEXT_ELEVENLABS_API_KEY; optional NEXT_ELEVENLABS_VOICE_ID)
         // new (await import('agora-agents')).ElevenLabsTTS({

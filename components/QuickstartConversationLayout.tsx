@@ -11,6 +11,8 @@ type QuickstartConversationLayoutProps = {
   visualizer: ReactNode;
   controls: ReactNode;
   onEndConversation: () => void;
+  /** Label for the header's end button. Defaults to "End Conversation". */
+  endLabel?: string;
 };
 
 export function QuickstartConversationLayout({
@@ -21,6 +23,7 @@ export function QuickstartConversationLayout({
   visualizer,
   controls,
   onEndConversation,
+  endLabel = 'End Conversation',
 }: QuickstartConversationLayoutProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col text-left">
@@ -44,10 +47,10 @@ export function QuickstartConversationLayout({
             size="sm"
             className="h-8 rounded-lg border border-destructive bg-transparent px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
             onClick={onEndConversation}
-            aria-label="End conversation with AI agent"
-            title="End conversation"
+            aria-label={endLabel}
+            title={endLabel}
           >
-            End Conversation
+            {endLabel}
           </Button>
         </div>
       </header>

@@ -19,6 +19,16 @@ export interface ClientStartRequest {
   priorContext?: string;
   /** Persona the candidate was just switched away from, for handoff logging. */
   fromPersona?: string;
+  /** True when this session is the post-interview debrief agent rather than a panel persona. */
+  debrief?: boolean;
+  /** Feedback report to ground the debrief agent's answers in. Required when debrief is true. Deliberately excludes hiringScore — the server never reads a score out of this. */
+  debriefReport?: DebriefReportPayload;
+}
+
+export interface DebriefReportPayload {
+  overallSummary: string;
+  focusAreaCoverage: { focusArea: string; covered: boolean }[];
+  personas: FeedbackReportPersonaSection[];
 }
 
 export interface FeedbackReportPersonaSection {
@@ -79,4 +89,12 @@ export interface ConversationComponentProps {
   switchError: string | null;
   /** Stops the current agent and starts a new one as `next`, carrying `transcriptText` into its prompt. Resolves false on failure. */
   onSwitchPersona: (next: PersonaId, transcriptText: string) => Promise<boolean>;
+}
+
+export interface DebriefCallProps {
+  agoraData: AgoraTokenData;
+  rtmClient: RTMClient;
+  onTokenWillExpire: (uid: string) => Promise<AgoraRenewalTokens>;
+  /** Called when the candidate ends the debrief (manual "I'm done" or the silent safety-cap timer). */
+  onEndDebrief: () => void;
 }

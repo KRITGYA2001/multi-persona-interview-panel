@@ -8,9 +8,11 @@ import type {
   ClientStartRequest,
   AgentResponse,
   AgoraRenewalTokens,
+  DebriefReportPayload,
   FeedbackReport,
   ReportTranscriptTurn,
 } from '@/types/conversation';
+import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from './ErrorBoundary';
 import { InterviewReport } from './InterviewReport';
 import { LoadingSkeleton } from './LoadingSkeleton';
@@ -18,6 +20,10 @@ import { MicCheck } from './MicCheck';
 import { PERSONA_IDS, type PersonaId } from '@/lib/personas';
 
 const ConversationComponent = dynamic(() => import('./ConversationComponent'), {
+  ssr: false,
+});
+
+const DebriefCall = dynamic(() => import('./DebriefCall'), {
   ssr: false,
 });
 
@@ -37,7 +43,16 @@ interface SessionData {
 
 const DEFAULT_PERSONA_MINUTES = 5;
 
-type Stage = 'loading' | 'not-found' | 'completed' | 'mic-check' | 'conversation' | 'report' | 'closed';
+type Stage =
+  | 'loading'
+  | 'not-found'
+  | 'completed'
+  | 'mic-check'
+  | 'conversation'
+  | 'debrief-offer'
+  | 'debrief'
+  | 'report'
+  | 'closed';
 
 interface InterviewSessionProps {
   sessionId: string;
@@ -58,6 +73,8 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [candidateName, setCandidateName] = useState('');
+  const [isStartingDebrief, setIsStartingDebrief] = useState(false);
+  const [debriefError, setDebriefError] = useState<string | null>(null);
 
   // Preload heavy modules while the candidate is still on the mic-check screen so
   // there's no dynamic-import delay once they click Continue.
@@ -253,6 +270,9 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
     [session, agoraData, currentPersona],
   );
 
+  // Stops the current panelist's agent but keeps RTC/RTM alive through report
+  // generation, so a "yes" on the debrief offer can start one more agent
+  // session on the same connection instead of rejoining from scratch.
   const handleEndConversation = useCallback(
     async (transcript: ReportTranscriptTurn[]) => {
       if (agoraData?.agentId) {
@@ -270,16 +290,15 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
         }
       }
 
-      rtmClient?.logout().catch((err) => console.error('RTM logout error:', err));
-      setRtmClient(null);
-      setAgoraData(null);
-
       if (!session || transcript.length === 0) {
+        rtmClient?.logout().catch((err) => console.error('RTM logout error:', err));
+        setRtmClient(null);
+        setAgoraData(null);
         setStage('mic-check');
         return;
       }
 
-      setStage('report');
+      setStage('debrief-offer');
       setIsGeneratingReport(true);
       setReportError(null);
       try {
@@ -302,6 +321,72 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
     },
     [agoraData, rtmClient, session, candidateName],
   );
+
+  // "Talk to the panel" invites a debrief agent on the same fixed agentUid/RTC
+  // connection the interview just used (see docs/ai/L1/L2/persona_handoff.md) —
+  // never the hiringScore, which DebriefReportPayload structurally excludes.
+  const handleTalkToPanel = useCallback(async () => {
+    if (!session || !agoraData || !report) return;
+    setIsStartingDebrief(true);
+    setDebriefError(null);
+    try {
+      const debriefReport: DebriefReportPayload = {
+        overallSummary: report.overallSummary,
+        focusAreaCoverage: report.focusAreaCoverage,
+        personas: report.personas,
+      };
+      const res = await fetch('/api/invite-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requester_id: agoraData.uid,
+          channel_name: agoraData.channel,
+          session_id: session.id,
+          debrief: true,
+          debriefReport,
+        } as ClientStartRequest),
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to start debrief: ${await res.text()}`);
+      }
+      const agentData = (await res.json()) as AgentResponse;
+      setAgoraData((prev) => (prev ? { ...prev, agentId: agentData.agent_id } : prev));
+      setStage('debrief');
+    } catch (err) {
+      console.error('Error starting debrief:', err);
+      setDebriefError('Failed to connect to the panel. You can still view your written report.');
+    } finally {
+      setIsStartingDebrief(false);
+    }
+  }, [session, agoraData, report]);
+
+  const handleSkipDebrief = useCallback(() => {
+    rtmClient?.logout().catch((err) => console.error('RTM logout error:', err));
+    setRtmClient(null);
+    setAgoraData(null);
+    setStage('report');
+  }, [rtmClient]);
+
+  const handleEndDebrief = useCallback(async () => {
+    if (agoraData?.agentId) {
+      try {
+        const response = await fetch('/api/stop-conversation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent_id: agoraData.agentId }),
+        });
+        if (!response.ok) {
+          console.error('Failed to stop debrief agent:', await response.text());
+        }
+      } catch (error) {
+        console.error('Error stopping debrief agent:', error);
+      }
+    }
+    rtmClient?.logout().catch((err) => console.error('RTM logout error:', err));
+    setRtmClient(null);
+    setAgoraData(null);
+    setStage('report');
+  }, [agoraData, rtmClient]);
 
   // The interview link is one-time-use — a completed report already exists server-side
   // by the time the candidate reaches this screen, so there's nothing to go "back" to.
@@ -330,19 +415,21 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
   return (
     <div
       className={`relative flex flex-col text-foreground ${
-        stage === 'conversation' ? 'h-dvh overflow-hidden' : 'min-h-dvh overflow-y-auto py-8'
+        stage === 'conversation' || stage === 'debrief'
+          ? 'h-dvh overflow-hidden'
+          : 'min-h-dvh overflow-y-auto py-8'
       }`}
     >
       <div
         className={`flex min-h-0 flex-1 flex-col ${
-          stage === 'conversation'
+          stage === 'conversation' || stage === 'debrief'
             ? 'items-stretch justify-start'
             : 'items-center justify-center'
         }`}
       >
         <div
           className={`z-10 flex min-h-0 flex-1 flex-col ${
-            stage === 'conversation'
+            stage === 'conversation' || stage === 'debrief'
               ? 'h-full w-full max-w-none items-stretch gap-0 px-0 text-left'
               : 'w-full max-w-none items-center justify-center px-4 text-center'
           }`}
@@ -413,6 +500,64 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
               <p className="text-sm text-muted-foreground">
                 Failed to load conversation data.
               </p>
+            ))}
+
+          {stage === 'debrief-offer' && (
+            <div className="flex w-full max-w-lg animate-fade-up flex-col items-center gap-4 rounded-[28px] border border-border/60 bg-card/80 px-8 py-10 text-center shadow-[0_20px_60px_-15px_rgba(74,74,74,0.28)] backdrop-blur-xl">
+              {isGeneratingReport ? (
+                <>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-secondary/20">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">Preparing your feedback...</p>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-xl font-semibold tracking-[-0.01em] text-foreground">
+                    Your feedback is ready
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    Want to talk it through with the panel, or go straight to your written report?
+                  </p>
+                  {debriefError && <p className="text-xs text-destructive">{debriefError}</p>}
+                  <div className="flex w-full flex-col gap-3 pt-2 sm:flex-row sm:justify-center">
+                    <Button
+                      onClick={handleTalkToPanel}
+                      disabled={isStartingDebrief || !report}
+                      className="rounded-xl bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-[0_8px_20px_-6px_rgba(226,180,189,0.6)] hover:from-primary/90 hover:to-secondary/90"
+                    >
+                      {isStartingDebrief ? 'Connecting...' : 'Talk to the panel about it'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleSkipDebrief}
+                      disabled={isStartingDebrief}
+                      className="rounded-xl"
+                    >
+                      Skip to my written report
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {stage === 'debrief' &&
+            (agoraData && rtmClient ? (
+              <Suspense fallback={<LoadingSkeleton />}>
+                <ErrorBoundary>
+                  <AgoraProvider>
+                    <DebriefCall
+                      agoraData={agoraData}
+                      rtmClient={rtmClient}
+                      onTokenWillExpire={handleTokenWillExpire}
+                      onEndDebrief={handleEndDebrief}
+                    />
+                  </AgoraProvider>
+                </ErrorBoundary>
+              </Suspense>
+            ) : (
+              <p className="text-sm text-muted-foreground">Failed to load the debrief.</p>
             ))}
 
           {stage === 'report' && (
