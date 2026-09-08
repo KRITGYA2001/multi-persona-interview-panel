@@ -57,6 +57,7 @@ export function buildPersonaSystemPrompt(
   focusAreas: string[],
   contextSoFar?: string,
   durationMinutes?: number,
+  isFirstActivePersona = false,
 ): string {
   const persona = getPersonaDefinition(personaId);
   const paceNote =
@@ -65,8 +66,8 @@ export function buildPersonaSystemPrompt(
       : '';
   const focusAreasSection =
     focusAreas.length > 0
-      ? `The recruiter flagged these focus areas for this interview: ${focusAreas.join(', ')}. After the introduction, work through whichever of these fall within your lane (${persona.focus}) — for each one, ask at least two distinct follow-up questions that dig into it, grounded in specifics from what the candidate has already told you rather than generic textbook phrasing. Leave areas that clearly belong to a different panelist for them to cover (hands-on coding, system design/HLD/LLD, and debugging belong to the Technical panelist; business impact, prioritization, and user research to Product; collaboration and ownership stories to Behavioral). Weave this in naturally as a conversation — never read the list aloud or treat it like a checklist.${paceNote}`
-      : '';
+      ? `The recruiter assigned you — the ${persona.label} panelist — these focus areas for this interview: ${focusAreas.join(', ')}. After the introduction, work through each of these — for every one, ask at least two distinct follow-up questions that dig into it, grounded in specifics from what the candidate has already told you rather than generic textbook phrasing. **Stay strictly inside this list**: never ask about a topic outside your assigned focus areas, even if the candidate raises one, and even if it sounds like it belongs to another panelist's lane — if the candidate brings up something outside your list, acknowledge it briefly in one short phrase and steer back to your own focus areas. Weave this in naturally as a conversation — never read the list aloud or treat it like a checklist.${paceNote}`
+      : `The recruiter did not assign specific focus areas to you — the ${persona.label} panelist. Ask questions strictly within your own lane (${persona.focus}) and do not stray into topics that belong to a different panelist. Ground each question in specifics from what the candidate has already told you rather than generic textbook phrasing.${paceNote}`;
 
   const handoffSection = contextSoFar
     ? `
@@ -82,7 +83,7 @@ Pick up naturally from where this left off. Do not repeat questions already aske
     : '';
 
   const introNote =
-    personaId === 'technical' && !contextSoFar
+    isFirstActivePersona && !contextSoFar
       ? `\n- **The introduction is already handled**: your opening line (spoken before this prompt takes over) already asked the candidate to introduce themselves and their background. Do not ask them to introduce themselves again — listen to their answer and follow up on specifics from it.`
       : '';
 
@@ -115,6 +116,7 @@ export function buildPersonaGreeting(
   roleTitle: string,
   isHandoff = false,
   fromPersonaId?: PersonaId,
+  isFirstActivePersona = false,
 ): string {
   const persona = getPersonaDefinition(personaId);
   if (isHandoff) {
@@ -123,7 +125,7 @@ export function buildPersonaGreeting(
       ? `Thanks — I'm the ${persona.label} panelist, picking up from our ${fromLabel} lead.`
       : `Thanks — I'm the ${persona.label} panelist, and I'll take it from here.`;
   }
-  if (personaId === 'technical') {
+  if (isFirstActivePersona) {
     return `Hi, I'm the ${persona.label} panelist for this ${roleTitle} interview. Let's start with a quick introduction — could you walk me through your background and the experience most relevant to this role?`;
   }
   return `Hi, I'm the ${persona.label} panelist for this ${roleTitle} interview. Let's get started.`;

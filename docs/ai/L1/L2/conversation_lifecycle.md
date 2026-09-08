@@ -17,7 +17,7 @@ The correctness target is single-init, predictable teardown, no leaked RTM/RTC r
 ## Detailed Start Sequence
 
 1. Recruiter fills out `SetupScreen`, which `POST`s `/api/session` (creates `sessions` + scaffolds `candidateContext`) and produces the candidate link `/interview/[sessionId]`.
-2. Candidate opens the link; `InterviewSession` fetches `GET /api/session/[id]` for `roleTitle`/`focusAreas`/`activePersonas`, and starts on the `'mic-check'` stage, rendering `MicCheck`.
+2. Candidate opens the link; `InterviewSession` fetches `GET /api/session/[id]` for `roleTitle`/`focusAreas`/`activePersonas`/`personaFocusAreas`, and starts on the `'mic-check'` stage, rendering `MicCheck`.
 3. Once the candidate passes the mic check, `InterviewSession.startConversation()` calls `GET /api/generate-agora-token`.
 4. In parallel:
    - `POST /api/invite-agent` starts the first persona's managed agent session (`persona` = first entry in `activePersonas`, `session_id` set, no `priorContext`/`fromPersona` on this initial call).

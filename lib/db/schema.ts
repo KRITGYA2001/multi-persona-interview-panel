@@ -12,6 +12,11 @@ export const sessions = pgTable("sessions", {
   recruiterEmail: text("recruiter_email"),
   candidateName: text("candidate_name"),
   personaDurations: jsonb("persona_durations").$type<Record<string, number>>().notNull().default({}),
+  // Per-panelist focus areas, keyed by PersonaId — each persona is scoped strictly to
+  // its own list (see buildPersonaSystemPrompt in lib/personas.ts). `focusAreas` above
+  // is kept as the flat union of these, for consumers that don't need per-persona detail
+  // (report focus-area coverage, candidateContext.role_profile).
+  personaFocusAreas: jsonb("persona_focus_areas").$type<Record<string, string[]>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

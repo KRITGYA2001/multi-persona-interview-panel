@@ -21,13 +21,13 @@ types/               Shared TypeScript route/component contracts
 - `invite-agent/route.ts`: validates input/env, loads session context from Postgres, builds the per-persona prompt/greeting/voice, configures and starts the agent session, writes `handoff_log` on a switch. See [invite_agent_config.md](L2/invite_agent_config.md).
 - `stop-conversation/route.ts`: stops agent and handles idempotent already-stopping cases.
 - `chat/completions/route.ts`: optional OpenAI-compatible SSE proxy for custom LLM path.
-- `session/route.ts`: `POST` — recruiter creates a session (`recruiterEmail`, `roleTitle`, `focusAreas`, `activePersonas`, `personaDurations`), scaffolds `candidateContext`.
+- `session/route.ts`: `POST` — recruiter creates a session (`recruiterEmail`, `roleTitle`, `focusAreas`, `activePersonas`, `personaDurations`, `personaFocusAreas`), scaffolds `candidateContext`. `focusAreas` is the derived union of `personaFocusAreas`, kept for consumers that don't need per-persona detail.
 - `session/[id]/route.ts`: `GET` — loads a session (minus `recruiterEmail`, stripped server-side) plus its `candidateContext` for the candidate-facing flow.
 - `session/[id]/report/route.ts`: `POST` — generates and persists the feedback report from a transcript, and (on the first report for a session) emails it to `recruiterEmail` via `lib/mailer.ts`; `GET` — returns a previously persisted report.
 
 ## Client Ownership (`components`)
 
-- `SetupScreen.tsx`: recruiter-facing two-column form (recruiter email, role title, focus areas, persona panel with per-persona minute budgets via `ROLE_TEMPLATES`), creates the session and produces the candidate link.
+- `SetupScreen.tsx`: recruiter-facing two-column form (recruiter email, role title, persona panel with per-persona minute budgets *and* per-persona focus areas via `ROLE_TEMPLATES`), creates the session and produces the candidate link.
 - `MicCheck.tsx`: candidate-facing mic-permission/device-check gate before joining the call.
 - `InterviewSession.tsx`: central orchestrator for `/interview/[sessionId]` — owns `Stage` (`loading` / `not-found` / `completed` / `mic-check` / `conversation` / `debrief-offer` / `debrief` / `report` / `closed`), session/Agora bootstrap, persona-switch delegation, report generation, and the post-interview debrief offer/start/end flow. Converts `personaDurations` (minutes) to `personaDurationsSeconds` for `ConversationComponent`. Defers RTM logout/`agoraData` teardown past `handleEndConversation` so the connection survives into the debrief offer — only `handleSkipDebrief`/`handleEndDebrief` (or the no-transcript early return) tear it down. See [conversation_lifecycle.md](L2/conversation_lifecycle.md).
 - `ConversationComponent.tsx`: RTC join, mic publish, toolkit init, transcript/metrics/issues state, `personaTimeline` tracking, and the countdown timer that drives automatic persona switching and automatic end-of-interview on the last persona's timeout.
@@ -46,7 +46,7 @@ types/               Shared TypeScript route/component contracts
 - `personas.ts`: `PERSONA_DEFINITIONS`, `PERSONA_IDS`, `getPersonaDefinition`, `buildPersonaSystemPrompt`, `buildPersonaGreeting` — the source of truth for each persona's label/focus/voice/prompt. Also `DEBRIEF_VOICE_ID`, `DebriefReportInput` (structurally omits `hiringScore`), `buildDebriefSystemPrompt`, `buildDebriefGreeting` for the post-interview debrief agent.
 - `report.ts`: server-only; `buildFeedbackReport` (LLM path with heuristic fallback), `createFeedbackReportBuilder` (DI factory for tests). Imports `ai`/`@ai-sdk/openai` — never import this from a client component.
 - `mailer.ts`: server-only; `sendRecruiterReportEmail` — Gmail SMTP via `nodemailer`, resolves `false` (never throws) when `EMAIL_HOST_USER`/`EMAIL_HOST_PASSWORD` are unset or the send fails. Never import this from a client component.
-- `role-templates.ts`: `ROLE_TEMPLATES` — pre-filled role/focus-area presets for `SetupScreen`.
+- `role-templates.ts`: `ROLE_TEMPLATES` — pre-filled role/per-persona-focus-area presets (`RoleTemplate.personaFocusAreas: Record<PersonaId, string[]>`) for `SetupScreen`.
 - `db/schema.ts`: Drizzle schema — `sessions`, `candidateContext`, `reports`, `events`.
 - `db/index.ts`: Drizzle/`pg` client, throws at import time if `DATABASE_URL` is unset.
 

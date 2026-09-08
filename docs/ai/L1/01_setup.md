@@ -62,8 +62,8 @@ Requires env/project binding:
 ## Local Run Notes
 
 - App + API routes run at `http://localhost:3000`.
-- Recruiter flow: fill out `SetupScreen` (recruiter email, role title, focus areas, persona panel with per-persona minute budgets) to create a session and produce a candidate link.
-- Candidate flow: open the link, pass `MicCheck`, and `InterviewSession.startConversation()` bootstraps token + RTM + invite flow for the first persona. Each persona auto-hands off to the next when its time budget expires; the interview ends automatically after the last persona's time runs out, or earlier if the candidate clicks "End conversation".
+- Recruiter flow: fill out `SetupScreen` (recruiter email, role title, persona panel with per-persona minute budgets *and* per-persona focus areas) to create a session and produce a candidate link.
+- Candidate flow: open the link, pass `MicCheck`, and `InterviewSession.startConversation()` bootstraps token + RTM + invite flow for the first persona (whichever persona is first in `activePersonas` opens with the candidate introduction). Each persona is hard-constrained to its own assigned focus areas and auto-hands off to the next when its time budget expires; the interview ends automatically after the last persona's time runs out, or earlier if the candidate clicks "End conversation".
 - If transcript or agent join fails, first run `agora project doctor --deep`. If every `/api/session*` call fails, check `DATABASE_URL` and that `pnpm run db:push` has been run.
 
 ## CI Expectations

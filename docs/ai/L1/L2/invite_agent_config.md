@@ -13,7 +13,7 @@ All of the managed agent configuration is built in `app/api/invite-agent/route.t
 | `requester_id`  |    ✅    | The candidate's RTC UID, used for `remoteUids`.                                            |
 | `channel_name`  |    ✅    | The RTC channel the agent joins.                                                            |
 | `persona`       |          | `PersonaId` to start as (`'technical' \| 'product' \| 'behavioral'`). Defaults to `'technical'` if omitted. |
-| `session_id`    |          | Interview session ID — used to load `roleTitle`/`focusAreas` from Postgres as the source of truth, and to scope the `handoff_log` write. |
+| `session_id`    |          | Interview session ID — used to load `roleTitle`/`personaFocusAreas[persona]`/`personaDurations[persona]` from Postgres as the source of truth, to derive `isFirstActivePersona` (`activePersonas[0] === persona`), and to scope the `handoff_log` write. |
 | `priorContext`  |          | Formatted transcript-so-far (see [persona_handoff.md](persona_handoff.md)), passed only when this call is a mid-call persona switch. |
 | `fromPersona`   |          | The persona the candidate was just switched away from, for `handoff_log` logging. Only meaningful alongside `session_id`. |
 | `debrief`       |          | `true` to start the post-interview debrief agent instead of a persona. Mutually exclusive with `persona`/`priorContext`/`fromPersona`; `400` if `debrief: true` is sent without `debriefReport`. |
@@ -21,9 +21,11 @@ All of the managed agent configuration is built in `app/api/invite-agent/route.t
 
 Role/focus-area context is loaded from Postgres by `session_id` rather than trusted from the client, so the spoken system prompt can never drift from what the recruiter configured in `SetupScreen`. The debrief path is the one branch that does *not* build its prompt from `PERSONA_DEFINITIONS`/Postgres role data — it builds entirely from the client-supplied `debriefReport`, since by that point the interview (and its role/focus-area context) is already over.
 
+`focusAreas` looked up per request is `session.personaFocusAreas[personaId]` (per-panelist, set on `SetupScreen`) — **not** the flat, panel-wide `session.focusAreas` column, which is kept only as a derived union for other consumers (`lib/report.ts`, `candidateContext`). See [persona_handoff.md](persona_handoff.md#per-persona-focus-areas-and-the-first-persona-introduction) for the full per-persona focus-area and first-persona-intro design.
+
 ## Persona Definitions
 
-Each persona's `label`, `focus`, `voiceId`, and `behaviorSignature` are defined in [`lib/personas.ts`](../../../../lib/personas.ts) as `PERSONA_DEFINITIONS`. `buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, contextSoFar?)` builds the system prompt for the persona being started; when `contextSoFar` is present (a mid-call switch) it appends a "# Conversation So Far" section. `buildPersonaGreeting(personaId, roleTitle, isHandoff?)` returns either a cold-open greeting or a shorter hand-off greeting.
+Each persona's `label`, `focus`, `voiceId`, and `behaviorSignature` are defined in [`lib/personas.ts`](../../../../lib/personas.ts) as `PERSONA_DEFINITIONS`. `buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, contextSoFar?, durationMinutes?, isFirstActivePersona?)` builds the system prompt for the persona being started: `focusAreas` is now a hard constraint — the persona is instructed to never ask about anything outside its own assigned list — and `isFirstActivePersona` (`session.activePersonas[0] === personaId`, computed in the route) determines whether the prompt should skip re-asking for the candidate's introduction. When `contextSoFar` is present (a mid-call switch) it appends a "# Conversation So Far" section. `buildPersonaGreeting(personaId, roleTitle, isHandoff?, fromPersonaId?, isFirstActivePersona?)` returns a cold-open greeting (with an introduction ask only when `isFirstActivePersona` is true), a plain "let's get started" cold-open otherwise, or a shorter hand-off greeting when `isHandoff` is true.
 
 When the request has `debrief: true`, the route skips `PERSONA_DEFINITIONS`/`buildPersonaSystemPrompt`/`buildPersonaGreeting` entirely and instead calls `buildDebriefSystemPrompt(roleTitle, debriefReport)`/`buildDebriefGreeting()` and uses the fixed `DEBRIEF_VOICE_ID` in place of `persona.voiceId` — there is no `PersonaId` for the debrief, so it isn't a `PERSONA_DEFINITIONS` entry.
 
@@ -35,8 +37,8 @@ When the request has `debrief: true`, the route skips `PERSONA_DEFINITIONS`/`bui
 const client = new AgoraClient({ area: Area.US, appId, appCertificate });
 
 const persona = getPersonaDefinition(personaId);
-const systemPrompt = buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, priorContext);
-const greeting = buildPersonaGreeting(personaId, roleTitle, Boolean(priorContext));
+const systemPrompt = buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, priorContext, durationMinutes, isFirstActivePersona);
+const greeting = buildPersonaGreeting(personaId, roleTitle, Boolean(priorContext), fromPersona, isFirstActivePersona);
 
 const agent = new Agent(client, {
   name: `conversation-${Date.now()}-${randomHex}`,

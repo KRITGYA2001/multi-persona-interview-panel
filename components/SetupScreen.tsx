@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, X, Check, Copy } from 'lucide-react';
+import { Loader2, X, Check, Copy, Mic, Users, Clock, FileCheck2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ROLE_TEMPLATES } from '@/lib/role-templates';
 import { PERSONA_IDS, PERSONA_DEFINITIONS, type PersonaId } from '@/lib/personas';
@@ -26,13 +26,21 @@ function defaultPersonaDurations(): Record<PersonaId, number> {
   );
 }
 
+function emptyPersonaFocusAreaDrafts(): Record<PersonaId, string> {
+  return PERSONA_IDS.reduce((acc, id) => ({ ...acc, [id]: '' }), {} as Record<PersonaId, string>);
+}
+
 export function SetupScreen() {
   const [recruiterEmail, setRecruiterEmail] = useState('');
   const [candidateName, setCandidateName] = useState('');
   const [templateId, setTemplateId] = useState('software-engineer');
   const [roleTitle, setRoleTitle] = useState(ROLE_TEMPLATES[0].title);
-  const [focusAreas, setFocusAreas] = useState<string[]>(ROLE_TEMPLATES[0].focusAreas);
-  const [newFocusArea, setNewFocusArea] = useState('');
+  const [personaFocusAreas, setPersonaFocusAreas] = useState<Record<PersonaId, string[]>>(
+    ROLE_TEMPLATES[0].personaFocusAreas,
+  );
+  const [newFocusAreaDrafts, setNewFocusAreaDrafts] = useState<Record<PersonaId, string>>(
+    emptyPersonaFocusAreaDrafts(),
+  );
   const [activePersonas, setActivePersonas] = useState<Set<PersonaId>>(
     new Set(PERSONA_IDS),
   );
@@ -49,21 +57,21 @@ export function SetupScreen() {
     const template = ROLE_TEMPLATES.find((t) => t.id === id);
     if (!template) return;
     setRoleTitle(template.title);
-    setFocusAreas(template.focusAreas);
+    setPersonaFocusAreas(template.personaFocusAreas);
   }
 
-  function addFocusArea() {
-    const value = newFocusArea.trim();
-    if (!value || focusAreas.includes(value)) {
-      setNewFocusArea('');
+  function addPersonaFocusArea(id: PersonaId) {
+    const value = newFocusAreaDrafts[id].trim();
+    if (!value || personaFocusAreas[id].includes(value)) {
+      setNewFocusAreaDrafts((prev) => ({ ...prev, [id]: '' }));
       return;
     }
-    setFocusAreas([...focusAreas, value]);
-    setNewFocusArea('');
+    setPersonaFocusAreas((prev) => ({ ...prev, [id]: [...prev[id], value] }));
+    setNewFocusAreaDrafts((prev) => ({ ...prev, [id]: '' }));
   }
 
-  function removeFocusArea(area: string) {
-    setFocusAreas(focusAreas.filter((a) => a !== area));
+  function removePersonaFocusArea(id: PersonaId, area: string) {
+    setPersonaFocusAreas((prev) => ({ ...prev, [id]: prev[id].filter((a) => a !== area) }));
   }
 
   function togglePersona(id: PersonaId) {
@@ -100,6 +108,10 @@ export function SetupScreen() {
     setIsSubmitting(true);
     setError(null);
     try {
+      const activePersonaIds = Array.from(activePersonas);
+      const activePersonaFocusAreas = Object.fromEntries(
+        activePersonaIds.map((id) => [id, personaFocusAreas[id]]),
+      );
       const res = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -107,10 +119,11 @@ export function SetupScreen() {
           recruiterEmail: recruiterEmail.trim(),
           candidateName: candidateName.trim(),
           roleTitle: roleTitle.trim(),
-          focusAreas,
-          activePersonas: Array.from(activePersonas),
+          focusAreas: Array.from(new Set(activePersonaIds.flatMap((id) => personaFocusAreas[id]))),
+          personaFocusAreas: activePersonaFocusAreas,
+          activePersonas: activePersonaIds,
           personaDurations: Object.fromEntries(
-            Array.from(activePersonas).map((id) => [id, personaDurations[id]]),
+            activePersonaIds.map((id) => [id, personaDurations[id]]),
           ),
         }),
       });
@@ -176,41 +189,39 @@ export function SetupScreen() {
         Configure the role and the panel, then generate a link for your candidate.
       </p>
 
-      {/* Recruiter email + candidate name */}
-      <div className="mt-8 grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
-        <div>
-          <label className={labelClass}>Recruiter email</label>
-          <input
-            type="email"
-            value={recruiterEmail}
-            onChange={(e) => setRecruiterEmail(e.target.value)}
-            placeholder="you@company.com"
-            className={inputClass}
-          />
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            The detailed report is sent here once the interview ends.
-          </p>
-        </div>
-        <div>
-          <label className={labelClass}>Candidate name</label>
-          <input
-            value={candidateName}
-            onChange={(e) => setCandidateName(e.target.value)}
-            placeholder="Jane Doe"
-            className={inputClass}
-          />
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            The candidate must enter this same name before the interview starts.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-8 grid grid-cols-1 gap-x-10 gap-y-8 md:grid-cols-2">
-        {/* Left column: about the role */}
-        <div>
+      <div className="mt-8 grid grid-cols-1 gap-x-10 gap-y-8 md:grid-cols-2 md:items-stretch">
+        {/* Left column: candidate + role setup, plus a "what to expect" panel to fill the column */}
+        <div className="flex flex-col">
           <h2 className="text-sm font-semibold text-foreground">About the role</h2>
 
           <div className="mt-4">
+            <label className={labelClass}>Recruiter email</label>
+            <input
+              type="email"
+              value={recruiterEmail}
+              onChange={(e) => setRecruiterEmail(e.target.value)}
+              placeholder="you@company.com"
+              className={inputClass}
+            />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              The detailed report is sent here once the interview ends.
+            </p>
+          </div>
+
+          <div className="mt-5">
+            <label className={labelClass}>Candidate name</label>
+            <input
+              value={candidateName}
+              onChange={(e) => setCandidateName(e.target.value)}
+              placeholder="Jane Doe"
+              className={inputClass}
+            />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              The candidate must enter this same name before the interview starts.
+            </p>
+          </div>
+
+          <div className="mt-5">
             <label className={labelClass}>Role template</label>
             <select
               value={templateId}
@@ -235,42 +246,49 @@ export function SetupScreen() {
             />
           </div>
 
-          <div className="mt-5">
-            <label className={labelClass}>Focus areas</label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {focusAreas.map((area) => (
-                <span
-                  key={area}
-                  className="flex items-center gap-1.5 rounded-full border border-border/70 bg-gradient-to-br from-secondary/60 to-muted/60 px-3 py-1 text-xs text-foreground shadow-sm"
-                >
-                  {area}
-                  <button
-                    onClick={() => removeFocusArea(area)}
-                    aria-label={`Remove ${area}`}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+          {/* Fills the column's remaining height and sets expectations for the recruiter. */}
+          <div className="mt-6 flex flex-1 flex-col justify-center gap-4 rounded-xl border border-border/50 bg-muted/20 p-5">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              What the candidate walks through
+            </span>
+            <ul className="flex flex-col gap-3.5 text-sm text-foreground">
+              <li className="flex items-start gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/25 to-secondary/25 text-primary">
+                  <Mic className="h-3.5 w-3.5" />
                 </span>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <input
-                value={newFocusArea}
-                onChange={(e) => setNewFocusArea(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addFocusArea();
-                  }
-                }}
-                placeholder="Add a focus area"
-                className={`flex-1 ${inputClass} mt-0`}
-              />
-              <Button onClick={addFocusArea} variant="outline" className="shrink-0 border-border bg-transparent text-foreground hover:bg-muted">
-                Add
-              </Button>
-            </div>
+                <span>
+                  <span className="font-medium">Mic check</span>
+                  <span className="block text-xs text-muted-foreground">Confirms audio before the panel starts.</span>
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/25 to-secondary/25 text-primary">
+                  <Users className="h-3.5 w-3.5" />
+                </span>
+                <span>
+                  <span className="font-medium">Panel introduction</span>
+                  <span className="block text-xs text-muted-foreground">The first panelist opens with an intro, in order.</span>
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/25 to-secondary/25 text-primary">
+                  <Clock className="h-3.5 w-3.5" />
+                </span>
+                <span>
+                  <span className="font-medium">Timed hand-offs</span>
+                  <span className="block text-xs text-muted-foreground">Each panelist stays on their focus areas, then hands off automatically.</span>
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/25 to-secondary/25 text-primary">
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                </span>
+                <span>
+                  <span className="font-medium">Feedback report</span>
+                  <span className="block text-xs text-muted-foreground">Generated after the call and emailed to you.</span>
+                </span>
+              </li>
+            </ul>
           </div>
         </div>
 
@@ -278,7 +296,7 @@ export function SetupScreen() {
         <div>
           <h2 className="text-sm font-semibold text-foreground">Interview panel</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Each panelist auto-hands off to the next when their time runs out.
+            Each panelist auto-hands off to the next when their time runs out, asking only about their own focus areas below.
           </p>
           <div className="mt-4 flex flex-col gap-2">
             {PERSONA_IDS.map((id) => {
@@ -321,6 +339,59 @@ export function SetupScreen() {
                       </label>
                     )}
                   </div>
+                  {active && (
+                    <div className="mt-3 border-t border-border/50 pt-3">
+                      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Focus areas
+                      </span>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {personaFocusAreas[id].map((area) => (
+                          <span
+                            key={area}
+                            className="flex items-center gap-1.5 rounded-full border border-border/70 bg-gradient-to-br from-secondary/60 to-muted/60 px-2.5 py-0.5 text-xs text-foreground shadow-sm"
+                          >
+                            {area}
+                            <button
+                              onClick={() => removePersonaFocusArea(id, area)}
+                              aria-label={`Remove ${area} from ${persona.label}`}
+                              className="text-muted-foreground hover:text-foreground"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                        {personaFocusAreas[id].length === 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            No focus areas set — this panelist will stay within their general lane.
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          value={newFocusAreaDrafts[id]}
+                          onChange={(e) =>
+                            setNewFocusAreaDrafts((prev) => ({ ...prev, [id]: e.target.value }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addPersonaFocusArea(id);
+                            }
+                          }}
+                          placeholder={`Add a focus area for ${persona.label}`}
+                          className={`flex-1 ${inputClass} mt-0 py-1.5 text-xs`}
+                        />
+                        <Button
+                          onClick={() => addPersonaFocusArea(id)}
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 border-border bg-transparent text-foreground hover:bg-muted"
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

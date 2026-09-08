@@ -64,7 +64,7 @@ Bootstrap behavior:
 
 ## Change Panel Timing / Recruiter Email Delivery
 
-1. Recruiter sets each active persona's minute budget in `SetupScreen.tsx`; it's validated/defaulted server-side in `app/api/session/route.ts` (`normalizePersonaDurations`) and stored as `personaDurations` (minutes) on the `sessions` row.
+1. Recruiter sets each active persona's minute budget in `SetupScreen.tsx`; it's validated/defaulted server-side in `app/api/session/route.ts` (`normalizePersonaDurations`) and stored as `personaDurations` (minutes) on the `sessions` row. Recruiter also sets each active persona's focus areas in the same panel (mirrored UI), normalized server-side (`normalizePersonaFocusAreas`) and stored as `personaFocusAreas` on the `sessions` row — see [persona_handoff.md](L2/persona_handoff.md#per-persona-focus-areas-and-the-first-persona-introduction).
 2. `InterviewSession.tsx` converts `personaDurations` (minutes) to `personaDurationsSeconds` and passes it into `ConversationComponent`, which owns the countdown/auto-switch/auto-end logic — see [persona_handoff.md](L2/persona_handoff.md) for the full timer-driven sequence.
 3. `PersonaSwitcher.tsx` is a read-only status display (countdown badge on the active persona) — it has no click/switch semantics; don't reintroduce an `onSwitch` prop without re-checking this workflow.
 4. The recruiter's email address is captured in `SetupScreen.tsx`, validated in `app/api/session/route.ts`, and stored as `recruiterEmail` on the `sessions` row — never returned by `GET /api/session/[id]` (server-only).

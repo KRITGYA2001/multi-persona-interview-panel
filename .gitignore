@@ -137,3 +137,6 @@ dist
 .pnpm-store/
 
 .DS_Store
+
+# Hackathon submission materials (not part of the shipped product)
+/hackathon-submission/

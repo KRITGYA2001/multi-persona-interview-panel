@@ -26,6 +26,8 @@
 
 ## Persona Switch & Report Pitfalls
 
+- **`focusAreas` passed to `buildPersonaSystemPrompt` must be `session.personaFocusAreas[personaId]` (per-panelist), never the flat `session.focusAreas` column** — the flat column is a derived union across all personas, so building a prompt from it would let a persona ask about another panelist's topics, defeating the hard-constraint scoping. The flat column stays valid only for consumers that genuinely want the whole-panel list (`lib/report.ts`, `candidateContext.role_profile.focus_areas`).
+- **`isFirstActivePersona` must be derived from `activePersonas[0] === personaId`, never hardcoded to `'technical'`** (except the documented no-`session_id` contract-test fallback in `invite-agent/route.ts`) — a recruiter can reorder or deselect personas, so whichever one is actually first in the active panel is the one that should ask for the candidate's introduction.
 - A persona switch must always pass `session_id` and `fromPersona` to `/api/invite-agent`, or the `handoff_log` write and the hand-off greeting variant are silently skipped — the new persona still starts, but re-introduces itself and may repeat questions.
 - `formatTranscriptForHandoff` truncates to the last 40 turns / 6000 chars — a very long pre-switch conversation loses its earliest turns from the next persona's context, by design (not a bug to "fix" by raising the cap without reconsidering prompt-size cost).
 - Feedback-report generation must never fail outright: `buildFeedbackReport` always falls back to the deterministic heuristic builder on missing `NEXT_LLM_API_KEY`/`NEXT_LLM_URL` or any LLM error. If you add a new failure path in `lib/report.ts`, keep it inside the existing `try/catch` so a broken LLM call still degrades to `source: 'heuristic'` rather than surfacing an error to the candidate.
@@ -88,6 +90,7 @@
 | Debrief never offered, or connection dies before the offer appears | `components/InterviewSession.tsx` (`handleEndConversation`'s deferred RTM teardown), `debrief-offer` stage render branch |
 | Debrief agent won't start / "Failed to start debrief" | `components/InterviewSession.tsx` (`handleTalkToPanel`), `app/api/invite-agent/route.ts` (`debrief`/`debriefReport` branch), `lib/personas.ts` (`buildDebriefSystemPrompt`) |
 | Debrief mentions a score or hire/no-hire verdict | `lib/personas.ts` (`buildDebriefSystemPrompt`'s Rules section), `DebriefReportInput`/`DebriefReportPayload` shape — confirm `hiringScore` isn't leaking through a new field |
+| Persona asks about topics outside its assigned focus areas, or wrong persona opens with the introduction | `lib/personas.ts` (`buildPersonaSystemPrompt`'s hard-constraint focus-areas section, `isFirstActivePersona` intro branch), `app/api/invite-agent/route.ts` (`personaFocusAreas[personaId]`/`isFirstActivePersona` lookup), `components/SetupScreen.tsx` (per-persona focus-area input) |
 
 ## Sandbox and Local Dev Caveats
 

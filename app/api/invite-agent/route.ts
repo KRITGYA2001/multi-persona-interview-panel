@@ -71,13 +71,21 @@ export async function POST(request: NextRequest) {
     let roleTitle = 'this role';
     let focusAreas: string[] = [];
     let durationMinutes: number | undefined;
+    // Whichever persona is first in the recruiter's active/ordered panel always
+    // opens with the candidate introduction — not a specific hardcoded persona.
+    let isFirstActivePersona = false;
     if (session_id) {
       const [session] = await db.select().from(sessions).where(eq(sessions.id, session_id));
       if (session) {
         roleTitle = session.roleTitle;
-        focusAreas = session.focusAreas;
+        focusAreas = session.personaFocusAreas?.[personaId] ?? [];
         durationMinutes = session.personaDurations?.[personaId];
+        isFirstActivePersona = session.activePersonas?.[0] === personaId;
       }
+    } else if (!debrief) {
+      // No session context to determine panel order from (e.g. contract tests) —
+      // fall back to the pre-per-persona-order default.
+      isFirstActivePersona = personaId === 'technical';
     }
 
     // Upgrade the raw hand-off transcript into a Groq-generated summary before
@@ -106,12 +114,12 @@ export async function POST(request: NextRequest) {
             notableQuotes: p.notableQuotes,
           })),
         })
-      : buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, contextForPrompt, durationMinutes);
+      : buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, contextForPrompt, durationMinutes, isFirstActivePersona);
 
     // A mid-call switch should pick up the conversation, not re-introduce the panel from scratch.
     const greeting = debrief
       ? buildDebriefGreeting()
-      : buildPersonaGreeting(personaId, roleTitle, Boolean(priorContext), fromPersona as PersonaId | undefined);
+      : buildPersonaGreeting(personaId, roleTitle, Boolean(priorContext), fromPersona as PersonaId | undefined, isFirstActivePersona);
 
     const voiceId = debrief ? DEBRIEF_VOICE_ID : getPersonaDefinition(personaId).voiceId;
 

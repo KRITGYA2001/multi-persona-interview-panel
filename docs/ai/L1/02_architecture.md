@@ -13,12 +13,12 @@
 ## Component Graph
 
 ```text
-Recruiter: SetupScreen (recruiter email, role, focus areas, per-persona minute budgets)
+Recruiter: SetupScreen (recruiter email, role, per-persona minute budgets, per-persona focus areas)
   -> POST /api/session (create sessions + candidateContext rows)
   -> candidate link /interview/[sessionId]
 
 Candidate: MicCheck -> InterviewSession
-  -> GET /api/session/[id]                (load roleTitle/focusAreas/activePersonas/personaDurations)
+  -> GET /api/session/[id]                (load roleTitle/focusAreas/activePersonas/personaDurations/personaFocusAreas)
   -> GET /api/generate-agora-token
   -> POST /api/invite-agent               (start first persona's agent session)
   -> RTC join/publish mic
@@ -47,9 +47,9 @@ Agora Cloud
 
 ## Start Sequence
 
-1. Candidate opens `/interview/[sessionId]`; `InterviewSession` fetches `GET /api/session/[id]` for `roleTitle`/`focusAreas`/`activePersonas`/`personaDurations`.
+1. Candidate opens `/interview/[sessionId]`; `InterviewSession` fetches `GET /api/session/[id]` for `roleTitle`/`focusAreas`/`activePersonas`/`personaDurations`/`personaFocusAreas`.
 2. `MicCheck` stage confirms mic access, then `InterviewSession.startConversation()` runs.
-3. UI fetches RTC+RTM token and invites the first persona's agent (`persona` = first entry in `activePersonas`) in parallel with RTM client setup.
+3. UI fetches RTC+RTM token and invites the first persona's agent (`persona` = first entry in `activePersonas`, which is also the persona whose greeting/prompt asks for the candidate introduction — see [persona_handoff.md](L2/persona_handoff.md#per-persona-focus-areas-and-the-first-persona-introduction)) in parallel with RTM client setup.
 4. UI mounts `ConversationComponent`.
 5. `useJoin` connects RTC once `isReady` guard passes.
 6. `AgoraVoiceAI.init()` subscribes transcript/state/metrics streams.

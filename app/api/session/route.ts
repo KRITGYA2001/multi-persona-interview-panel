@@ -35,17 +35,42 @@ function normalizePersonaDurations(
   return result;
 }
 
+// Defaults any active persona missing a sane entry to an empty list, mirroring
+// normalizePersonaDurations above.
+function normalizePersonaFocusAreas(
+  raw: unknown,
+  activePersonas: string[],
+): Record<string, string[]> {
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const result: Record<string, string[]> = {};
+  for (const id of activePersonas) {
+    const value = source[id];
+    result[id] = Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+  }
+  return result;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const roleTitle = typeof body.roleTitle === 'string' ? body.roleTitle.trim() : '';
-    const focusAreas = Array.isArray(body.focusAreas) ? body.focusAreas : [];
     const activePersonas = Array.isArray(body.activePersonas)
       ? body.activePersonas
       : ['technical', 'product', 'behavioral'];
     const recruiterEmail = typeof body.recruiterEmail === 'string' ? body.recruiterEmail.trim() : '';
     const candidateName = typeof body.candidateName === 'string' ? body.candidateName.trim() : '';
     const personaDurations = normalizePersonaDurations(body.personaDurations, activePersonas);
+    const personaFocusAreas = normalizePersonaFocusAreas(body.personaFocusAreas, activePersonas);
+    // The flat list is the derived union of the per-persona lists — kept for consumers
+    // that don't need per-persona detail (report focus-area coverage, candidateContext).
+    // Falls back to the client-sent flat list only if per-persona data is empty (e.g. an
+    // older/other caller), so this route stays robust without duplicating recruiter input.
+    const focusAreas =
+      Object.values(personaFocusAreas).some((areas) => areas.length > 0)
+        ? Array.from(new Set(Object.values(personaFocusAreas).flat()))
+        : Array.isArray(body.focusAreas)
+          ? body.focusAreas
+          : [];
 
     if (!roleTitle) {
       return NextResponse.json({ error: 'roleTitle is required' }, { status: 400 });
@@ -66,6 +91,7 @@ export async function POST(request: NextRequest) {
         recruiterEmail,
         candidateName,
         personaDurations,
+        personaFocusAreas,
         channelName: generateChannelName(),
       })
       .returning();

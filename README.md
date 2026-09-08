@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org/)
 
-Multi Persona runs live, voice-based interview panels: a recruiter configures a role, focus areas, a panel of AI interviewer personas (Technical / Product / Behavioral), a per-persona time budget, and their own email, then shares a candidate link. The candidate does a mic check and talks with the panel over a real-time voice call; each persona auto-hands off to the next when its time budget expires, with full context carried forward, and the interview ends automatically once the last persona's time is up (or earlier, if the candidate ends it). The candidate gets an instant feedback report in-browser, and the recruiter gets the same report by email.
+Multi Persona runs live, voice-based interview panels: a recruiter configures a role, a panel of AI interviewer personas (Technical / Product / Behavioral) each with its own time budget and its own focus areas, and their own email, then shares a candidate link. The candidate does a mic check and talks with the panel over a real-time voice call; whichever persona is first in the panel opens with the candidate's introduction, each persona asks only within its assigned focus areas grounded in the candidate's actual replies, and auto-hands off to the next when its time budget expires, with full context carried forward — the interview ends automatically once the last persona's time is up (or earlier, if the candidate ends it). The candidate gets an instant feedback report in-browser, and the recruiter gets the same report by email.
 
 It's built on the [Agora Conversational AI Engine](https://docs.agora.io/en/conversational-ai) and Next.js — voice agent visualizer ([Agent UIKit](https://agoraio-conversational-ai.github.io/agent-uikit/)), live transcript, and real-time pipeline latency via `AGENT_METRICS` ([Agent Toolkit](https://github.com/AgoraIO-Conversational-AI/agent-client-toolkit-ts)) all come from the underlying Agora quickstart recipe this app extends.
 
@@ -112,8 +112,8 @@ The browser fetches a combined RTC + RTM token (`buildTokenWithRtm`) from this a
 
 ## What You Get
 
-- Recruiter setup flow: recruiter email, role title, focus areas, and a selectable panel of interviewer personas with per-persona minute budgets
-- Candidate flow: mic check (with name capture) → live voice call → timer-driven auto-switch/auto-end across the panel → feedback report generation → an optional spoken debrief with the panel (candidate can talk through their feedback out loud, or skip straight to the written report) → instant feedback report, plus a detailed report emailed to the recruiter. The interview link is one-time-use — it's blocked once a report exists for the session.
+- Recruiter setup flow: recruiter email, role title, and a selectable panel of interviewer personas, each with its own minute budget and its own hard-scoped focus-area list — a panelist never strays into another panelist's focus areas or asks generic, unassigned questions
+- Candidate flow: mic check (with name capture) → live voice call, opened by whichever panelist is first in the recruiter's active panel order → timer-driven auto-switch/auto-end across the panel → feedback report generation → an optional spoken debrief with the panel (candidate can talk through their feedback out loud, or skip straight to the written report) → instant feedback report, plus a detailed report emailed to the recruiter. The interview link is one-time-use — it's blocked once a report exists for the session.
 - RTC audio plus RTM transcript and state events
 - Server routes for token generation, agent invite/stop, session storage, and report generation
 - [`AgentVisualizer`](https://agoraio-conversational-ai.github.io/agent-uikit/) for agent state and a built-in transcript panel for live turns, with persona-switch dividers
