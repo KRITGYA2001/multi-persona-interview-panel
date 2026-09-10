@@ -9,7 +9,7 @@ import { PERSONA_IDS, getPersonaDefinition } from '@/lib/personas';
 import { groqRespond } from '@/lib/groq';
 
 const REPORT_SYSTEM_PROMPT =
-  'You are an assistant that writes structured candidate feedback reports for a job interview panel. Respond with ONLY a JSON object matching this shape: {"overallSummary": string, "focusAreaCoverage": [{"focusArea": string, "covered": boolean}], "personas": [{"persona": string, "label": string, "strengths": string[], "concerns": string[], "notableQuotes": string[]}], "hiringScore": number}. "hiringScore" is your overall assessment of how likely this candidate should be hired for this specific role, on a 0-100 scale (0 = clear no-hire, 100 = clear strong hire), weighing all panelists\' findings together. Be specific and evidence-based, quoting the candidate where useful. Do not include markdown formatting or any text outside the JSON object.';
+  'You are an assistant that writes structured candidate feedback reports for a job interview panel. Respond with ONLY a JSON object matching this shape: {"overallSummary": string, "focusAreaCoverage": [{"focusArea": string, "covered": boolean}], "personas": [{"persona": string, "label": string, "strengths": string[], "concerns": string[], "notableQuotes": string[]}], "hiringScore": number}. "hiringScore" is your overall assessment of how likely this candidate should be hired for this specific role, on a 0-100 scale (0 = clear no-hire, 100 = clear strong hire), weighing all panelists\' findings together. Be specific and evidence-based, quoting the candidate where useful. If a coding exercise is included, it was a spoken round with no code editor — fold an assessment of the candidate\'s verbally described approach (correctness, reasoning, clarity) into the Technical panelist\'s strengths/concerns rather than giving it its own section. Do not include markdown formatting or any text outside the JSON object.';
 
 export type { ReportTranscriptTurn };
 
@@ -18,6 +18,10 @@ export interface BuildFeedbackReportInput {
   candidateName?: string;
   focusAreas: string[];
   transcript: ReportTranscriptTurn[];
+  codingExercise?: {
+    question: string;
+    testExamples: { input: string; output: string }[];
+  };
 }
 
 type ReportDeps = {
@@ -65,7 +69,7 @@ function sanitizeHiringScore(
 // the LLM call itself fails — the candidate should never be left with no
 // report at all.
 function buildHeuristicReport(input: BuildFeedbackReportInput): FeedbackReport {
-  const { roleTitle, candidateName, focusAreas, transcript } = input;
+  const { roleTitle, candidateName, focusAreas, transcript, codingExercise } = input;
 
   const personas: FeedbackReportPersonaSection[] = PERSONA_IDS.filter((id) =>
     transcript.some((t) => t.persona === id),
@@ -90,6 +94,10 @@ function buildHeuristicReport(input: BuildFeedbackReportInput): FeedbackReport {
         concerns.push('Answers to this panelist were often brief — consider probing for more depth here.');
       }
       strengths.push(`Engaged in ${candidateTurns.length} exchange${candidateTurns.length === 1 ? '' : 's'} on ${def.focus}.`);
+    }
+
+    if (id === 'technical' && codingExercise) {
+      strengths.push('Talked through a live coding question during this round — see transcript for their reasoning and solution.');
     }
 
     const notableQuotes = candidateTurns
@@ -161,7 +169,10 @@ function tryParseReportJson(
 // Builds the same prompt content used by both the Groq path and the
 // @ai-sdk/openai path, so a switch between them never changes report quality.
 function buildReportUserPrompt(input: BuildFeedbackReportInput): string {
-  return `Role: ${input.roleTitle}\nFocus areas: ${input.focusAreas.join(', ') || 'none specified'}\n\nTranscript:\n${formatTranscriptForPrompt(input.transcript)}`;
+  const codingSection = input.codingExercise
+    ? `\n\nCoding exercise given to the candidate (this was a spoken round — no code editor; the candidate talked through their solution instead of typing it, so look at the transcript above for their reasoning and approach):\n${input.codingExercise.question}\nTest examples:\n${input.codingExercise.testExamples.map((e) => `Input: ${e.input} -> Output: ${e.output}`).join('\n')}`
+    : '';
+  return `Role: ${input.roleTitle}\nFocus areas: ${input.focusAreas.join(', ') || 'none specified'}\n\nTranscript:\n${formatTranscriptForPrompt(input.transcript)}${codingSection}`;
 }
 
 export function createFeedbackReportBuilder({ createOpenAIClient, generateTextImpl }: ReportDeps) {

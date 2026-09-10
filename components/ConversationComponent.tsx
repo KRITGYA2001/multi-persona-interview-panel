@@ -48,6 +48,7 @@ import {
   type QuickstartAgentMetric,
 } from './QuickstartPipelineMetrics';
 import { QuickstartTranscriptPanel } from './QuickstartTranscriptPanel';
+import { CodingQuestionPanel } from './CodingQuestionPanel';
 import type {
   ConversationComponentProps,
   ReportTranscriptTurn,
@@ -109,6 +110,7 @@ export default function ConversationComponent({
   isSwitchingPersona,
   switchError,
   onSwitchPersona,
+  codingQuestion,
 }: ConversationComponentProps) {
   const client = useRTCClient();
   const remoteUsers = useRemoteUsers();
@@ -420,6 +422,74 @@ export default function ConversationComponent({
     return getCurrentInProgressMessage(transcript);
   }, [transcript]);
 
+  // Structural (not content-based) trigger for the coding panel: count panelist
+  // turns since the current persona's timeline entry began. IN_PROGRESS turns are
+  // included here (unlike messageList) so the panel appears as the 2nd question
+  // starts being spoken, not only once it finishes.
+  const panelistTurnsSincePersonaStart = useMemo(() => {
+    const localUID = String(client.uid);
+    const since = personaTimeline[personaTimeline.length - 1]?.since ?? 0;
+    return transcript.filter((item) => {
+      if (String(item.uid) === localUID) return false;
+      const ts =
+        typeof item._time === 'number' ? normalizeTimestampMs(item._time) : undefined;
+      return typeof ts !== 'number' || ts >= since;
+    }).length;
+  }, [transcript, client.uid, personaTimeline]);
+
+  const isCodingPanelEligible =
+    currentPersona === 'technical' && codingQuestion != null && panelistTurnsSincePersonaStart >= 2;
+
+  const codingPhaseSeconds = useMemo(() => {
+    const budget = personaDurationsSeconds.technical ?? 0;
+    return budget > 0 ? Math.min(8 * 60, Math.floor(budget / 2)) : 8 * 60;
+  }, [personaDurationsSeconds]);
+
+  const [isCodingPanelClosed, setIsCodingPanelClosed] = useState(false);
+  const [codingRemainingSeconds, setCodingRemainingSeconds] = useState<number | null>(null);
+  const hasCodingClosedRef = useRef(false);
+
+  // Reset the coding phase whenever the active persona changes, mirroring the
+  // main countdown's per-persona reset below.
+  useEffect(() => {
+    setIsCodingPanelClosed(false);
+    setCodingRemainingSeconds(null);
+    hasCodingClosedRef.current = false;
+  }, [currentPersona]);
+
+  // Seed the countdown exactly once, the moment the panel first becomes eligible.
+  useEffect(() => {
+    if (isCodingPanelEligible && codingRemainingSeconds === null) {
+      setCodingRemainingSeconds(codingPhaseSeconds);
+    }
+  }, [isCodingPanelEligible, codingPhaseSeconds, codingRemainingSeconds]);
+
+  // Ticks once per second while the panel is open, paused during a persona-switch round-trip.
+  useEffect(() => {
+    if (!isCodingPanelEligible || isCodingPanelClosed || isSwitchingPersona) return;
+    if (codingRemainingSeconds === null) return;
+    const interval = setInterval(() => {
+      setCodingRemainingSeconds((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isCodingPanelEligible, isCodingPanelClosed, isSwitchingPersona, codingRemainingSeconds]);
+
+  // Zero-crossing closes the panel — this never triggers a persona switch,
+  // it only hides the coding UI.
+  useEffect(() => {
+    if (
+      isCodingPanelEligible &&
+      !isCodingPanelClosed &&
+      codingRemainingSeconds === 0 &&
+      !hasCodingClosedRef.current
+    ) {
+      hasCodingClosedRef.current = true;
+      setIsCodingPanelClosed(true);
+    }
+  }, [isCodingPanelEligible, isCodingPanelClosed, codingRemainingSeconds]);
+
+  const showCodingPanel = isCodingPanelEligible && !isCodingPanelClosed;
+
   // Publish local mic once the track exists; usePublish waits for RTC connection.
   usePublish([localMicrophoneTrack]);
 
@@ -640,6 +710,14 @@ export default function ConversationComponent({
         </div>
       }
       onEndConversation={handleEndConversation}
+      codingPanel={
+        showCodingPanel && codingQuestion ? (
+          <CodingQuestionPanel
+            question={codingQuestion}
+            secondsRemaining={codingRemainingSeconds ?? codingPhaseSeconds}
+          />
+        ) : undefined
+      }
     />
   );
 }

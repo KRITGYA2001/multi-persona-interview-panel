@@ -14,6 +14,7 @@ import { db } from '@/lib/db';
 import { sessions, candidateContext } from '@/lib/db/schema';
 import { DEFAULT_AGENT_UID } from '@/lib/agora';
 import { groqRespond } from '@/lib/groq';
+import { generateCodingQuestion, type CodingQuestion } from '@/lib/coding-question';
 import {
   buildDebriefGreeting,
   buildDebriefSystemPrompt,
@@ -21,6 +22,7 @@ import {
   buildPersonaSystemPrompt,
   DEBRIEF_VOICE_ID,
   getPersonaDefinition,
+  hasCodingFocusArea,
   type PersonaId,
 } from '@/lib/personas';
 
@@ -100,6 +102,14 @@ export async function POST(request: NextRequest) {
       if (summary) contextForPrompt = summary;
     }
 
+    // Generate an easy-level coding question up front (never mid-call) so the
+    // question can be baked into the system prompt and handed to the client in
+    // the same response — no separate "decide to ask a coding question" step.
+    let codingQuestion: CodingQuestion | undefined;
+    if (!debrief && personaId === 'technical' && hasCodingFocusArea(focusAreas)) {
+      codingQuestion = await generateCodingQuestion(roleTitle, focusAreas);
+    }
+
     // The debrief agent isn't a panel persona — it gets its own prompt, greeting,
     // and voice, built from the just-generated feedback report (never the score:
     // debriefReport's type structurally excludes hiringScore, see lib/personas.ts).
@@ -114,7 +124,15 @@ export async function POST(request: NextRequest) {
             notableQuotes: p.notableQuotes,
           })),
         })
-      : buildPersonaSystemPrompt(personaId, roleTitle, focusAreas, contextForPrompt, durationMinutes, isFirstActivePersona);
+      : buildPersonaSystemPrompt(
+          personaId,
+          roleTitle,
+          focusAreas,
+          contextForPrompt,
+          durationMinutes,
+          isFirstActivePersona,
+          codingQuestion,
+        );
 
     // A mid-call switch should pick up the conversation, not re-introduce the panel from scratch.
     const greeting = debrief
@@ -273,10 +291,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Persist the generated coding question so the report can fold it in later,
+    // even if the candidate never returns to this response payload client-side.
+    // Best-effort, same shape as the hand-off log write above.
+    if (session_id && codingQuestion) {
+      try {
+        const [existing] = await db
+          .select()
+          .from(candidateContext)
+          .where(eq(candidateContext.sessionId, session_id));
+        if (existing) {
+          const context = existing.context as Record<string, unknown>;
+          await db
+            .update(candidateContext)
+            .set({
+              context: { ...context, coding_question: codingQuestion },
+              updatedAt: new Date(),
+            })
+            .where(eq(candidateContext.sessionId, session_id));
+        }
+      } catch (err) {
+        console.error('Failed to save coding question:', err);
+      }
+    }
+
     return NextResponse.json({
       agent_id: agentId,
       create_ts: Math.floor(Date.now() / 1000),
       state: 'RUNNING',
+      ...(codingQuestion ? { codingQuestion } : {}),
     } as AgentResponse);
   } catch (error) {
     console.error('Error starting conversation:', error);

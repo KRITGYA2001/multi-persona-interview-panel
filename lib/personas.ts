@@ -3,6 +3,8 @@
 // session and starts a new one for the same RTC channel/UID (see
 // docs/ai/L1/L2/persona_handoff.md).
 
+import type { CodingQuestion } from '@/lib/coding-question';
+
 export type PersonaId = 'technical' | 'product' | 'behavioral';
 
 export const PERSONA_IDS: PersonaId[] = ['technical', 'product', 'behavioral'];
@@ -51,6 +53,13 @@ export function getPersonaDefinition(id: string): PersonaDefinition {
   return persona;
 }
 
+const CODING_FOCUS_AREA_PATTERN = /coding|code|data structures?|algorithms?|dsa|leetcode|programming/i;
+
+/** Case-insensitive keyword match against a persona's free-text focus-area tags — not persona-specific, callers gate this to the technical persona. */
+export function hasCodingFocusArea(focusAreas: string[]): boolean {
+  return focusAreas.some((area) => CODING_FOCUS_AREA_PATTERN.test(area));
+}
+
 export function buildPersonaSystemPrompt(
   personaId: PersonaId,
   roleTitle: string,
@@ -58,6 +67,7 @@ export function buildPersonaSystemPrompt(
   contextSoFar?: string,
   durationMinutes?: number,
   isFirstActivePersona = false,
+  codingQuestion?: CodingQuestion,
 ): string {
   const persona = getPersonaDefinition(personaId);
   const paceNote =
@@ -87,11 +97,27 @@ Pick up naturally from where this left off. Do not repeat questions already aske
       ? `\n- **The introduction is already handled**: your opening line (spoken before this prompt takes over) already asked the candidate to introduce themselves and their background. Do not ask them to introduce themselves again — listen to their answer and follow up on specifics from it.`
       : '';
 
+  const codingQuestionSection = codingQuestion
+    ? `
+
+# Coding Question (ask this first)
+Immediately after the candidate's introduction, before any other focus area, present this exact coding question as your first substantive question — read it verbatim, don't paraphrase it away:
+
+"""
+${codingQuestion.question}
+"""
+
+Walk through these test examples out loud so the candidate understands the expected behavior:
+${codingQuestion.testExamples.map((e) => `- Input: ${e.input} → Output: ${e.output}`).join('\n')}
+
+Tell the candidate the question and test examples are visible on their screen, but there is no code editor — this round is entirely spoken. Ask them to think out loud and describe their solution to you verbally: their approach, the logic, and how they'd structure the code, step by step, as if narrating it. Give them real space to think — don't interrupt with rapid-fire follow-ups while they're working through it. Once they've walked you through their solution, ask **at most two** follow-up questions about it (e.g. complexity, edge cases, an alternative approach) — no more — then move on to your other focus areas. Do not dwell on this question or keep circling back to it once you've moved on, and do not ask a second coding question.`
+    : '';
+
   return `You are the **${persona.label}** panelist on a 3-person AI interview panel for a **${roleTitle}** role. You are one of three coordinated interviewers (Technical, Product, Behavioral) — the candidate can hear whichever of you is currently speaking.
 
 # Your Lane
 Your focus is **${persona.focus}**. ${persona.behaviorSignature}
-${focusAreasSection}
+${focusAreasSection}${codingQuestionSection}
 
 # Honesty Rule
 You are evaluating a real candidate for a real role. Never invent facts about the company or role beyond what you've been told. If you don't have information, ask the candidate rather than assuming.

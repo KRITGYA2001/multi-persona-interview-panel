@@ -12,6 +12,7 @@ import type {
   FeedbackReport,
   ReportTranscriptTurn,
 } from '@/types/conversation';
+import type { CodingQuestion } from '@/lib/coding-question';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from './ErrorBoundary';
 import { InterviewReport } from './InterviewReport';
@@ -75,6 +76,7 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
   const [candidateName, setCandidateName] = useState('');
   const [isStartingDebrief, setIsStartingDebrief] = useState(false);
   const [debriefError, setDebriefError] = useState<string | null>(null);
+  const [codingQuestion, setCodingQuestion] = useState<CodingQuestion | undefined>(undefined);
 
   // Preload heavy modules while the candidate is still on the mic-check screen so
   // there's no dynamic-import delay once they click Continue.
@@ -166,6 +168,7 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
         })(),
       ]);
 
+      if (agentData?.codingQuestion) setCodingQuestion(agentData.codingQuestion);
       setRtmClient(rtm);
       setAgoraData({ ...responseData, agentId: agentData?.agent_id });
       setStage('conversation');
@@ -256,6 +259,7 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
         }
 
         const agentData = (await inviteResponse.json()) as AgentResponse;
+        if (agentData.codingQuestion) setCodingQuestion(agentData.codingQuestion);
         setAgoraData((prev) => (prev ? { ...prev, agentId: agentData.agent_id } : prev));
         setCurrentPersona(next);
         return true;
@@ -491,6 +495,7 @@ export default function InterviewSession({ sessionId }: InterviewSessionProps) {
                         isSwitchingPersona={isSwitchingPersona}
                         switchError={switchError}
                         onSwitchPersona={handleSwitchPersona}
+                        codingQuestion={codingQuestion}
                       />
                     </AgoraProvider>
                   </ErrorBoundary>

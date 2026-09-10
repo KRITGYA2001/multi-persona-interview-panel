@@ -13,6 +13,8 @@ type QuickstartConversationLayoutProps = {
   onEndConversation: () => void;
   /** Label for the header's end button. Defaults to "End Conversation". */
   endLabel?: string;
+  /** Live coding question + code box, shown above the visualizer for the technical persona's coding phase. */
+  codingPanel?: ReactNode;
 };
 
 export function QuickstartConversationLayout({
@@ -24,6 +26,7 @@ export function QuickstartConversationLayout({
   controls,
   onEndConversation,
   endLabel = 'End Conversation',
+  codingPanel,
 }: QuickstartConversationLayoutProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col text-left">
@@ -67,8 +70,9 @@ export function QuickstartConversationLayout({
         </aside>
 
         <main className="order-1 flex min-h-0 flex-1 flex-col lg:order-2 lg:border-l lg:border-border/50 lg:pl-6">
-          <div className="flex min-h-0 flex-1 flex-col pb-2 pt-3 md:pb-6">
-            <div className="flex min-h-0 flex-1 items-center justify-center">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 pb-2 pt-3 md:pb-6">
+            {codingPanel && <div className="min-h-0 flex-1 overflow-y-auto">{codingPanel}</div>}
+            <div className={codingPanel ? 'flex shrink-0 items-center justify-center' : 'flex min-h-0 flex-1 items-center justify-center'}>
               {visualizer}
             </div>
             <div className="shrink-0 pt-4">{controls}</div>

@@ -114,6 +114,7 @@ The browser fetches a combined RTC + RTM token (`buildTokenWithRtm`) from this a
 
 - Recruiter setup flow: recruiter email, role title, and a selectable panel of interviewer personas, each with its own minute budget and its own hard-scoped focus-area list — a panelist never strays into another panelist's focus areas or asks generic, unassigned questions
 - Candidate flow: mic check (with name capture) → live voice call, opened by whichever panelist is first in the recruiter's active panel order → timer-driven auto-switch/auto-end across the panel → feedback report generation → an optional spoken debrief with the panel (candidate can talk through their feedback out loud, or skip straight to the written report) → instant feedback report, plus a detailed report emailed to the recruiter. The interview link is one-time-use — it's blocked once a report exists for the session.
+- Live coding round: when the technical persona's focus areas mention coding/data structures/algorithms, it opens with one easy-level coding question — spoken aloud and shown on screen with test examples, entirely voice-based (no code editor) — while the candidate talks through their solution; the panel auto-closes on a timer and the candidate's spoken solution (from the transcript) is folded into the technical panelist's written report section.
 - RTC audio plus RTM transcript and state events
 - Server routes for token generation, agent invite/stop, session storage, and report generation
 - [`AgentVisualizer`](https://agoraio-conversational-ai.github.io/agent-uikit/) for agent state and a built-in transcript panel for live turns, with persona-switch dividers
@@ -162,12 +163,14 @@ NEXT_ELEVENLABS_VOICE_ID=...
 - `components/InterviewSession.tsx` — candidate flow orchestrator (bootstrap, switch, report, debrief offer/start/end)
 - `components/ConversationComponent.tsx` — RTC client, transcript state, `AGENT_METRICS`, mic release
 - `components/PersonaSwitcher.tsx` — read-only mid-call panel status with a live countdown
+- `components/CodingQuestionPanel.tsx` — live coding round UI (question, test examples, "speak your solution aloud" prompt — no code editor)
 - `components/DebriefCall.tsx` — post-interview spoken debrief call (join/converse/end, no persona timeline)
 - `components/InterviewReport.tsx` — end-of-call feedback report UI
 - `components/QuickstartConversationLayout.tsx` — in-call header, transcript rail, controls dock
 - `components/QuickstartPipelineMetrics.tsx` — per-stage latency chips in the header
 - `components/QuickstartTranscriptPanel.tsx` — live transcript rail with persona-switch dividers
 - `lib/personas.ts` — persona definitions, prompt/greeting builders, and the debrief prompt/greeting/voice builders
+- `lib/coding-question.ts` — generates the technical persona's live coding question (Groq, with a hardcoded fallback bank)
 - `lib/report.ts` — feedback report generation (LLM + heuristic fallback)
 - `lib/mailer.ts` — recruiter report email delivery (Gmail SMTP, best-effort)
 - `lib/conversation.ts` — transcript normalization, visualizer state mapping, persona attribution

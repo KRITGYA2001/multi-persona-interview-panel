@@ -1,5 +1,6 @@
 import type { RTMClient } from 'agora-rtm';
 import type { PersonaId } from '@/lib/personas';
+import type { CodingQuestion } from '@/lib/coding-question';
 
 export interface AgoraTokenData {
   token: string;
@@ -67,6 +68,8 @@ export interface AgentResponse {
   agent_id: string;
   create_ts: number;
   state: string;
+  /** Generated coding question, present when this response starts/switches into a technical persona with a coding-related focus area. */
+  codingQuestion?: CodingQuestion;
 }
 
 export interface AgoraRenewalTokens {
@@ -89,6 +92,8 @@ export interface ConversationComponentProps {
   switchError: string | null;
   /** Stops the current agent and starts a new one as `next`, carrying `transcriptText` into its prompt. Resolves false on failure. */
   onSwitchPersona: (next: PersonaId, transcriptText: string) => Promise<boolean>;
+  /** Coding question generated for the technical persona, when its focus areas call for one. */
+  codingQuestion?: CodingQuestion;
 }
 
 export interface DebriefCallProps {

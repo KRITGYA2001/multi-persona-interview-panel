@@ -20,12 +20,13 @@ Recruiter: SetupScreen (recruiter email, role, per-persona minute budgets, per-p
 Candidate: MicCheck -> InterviewSession
   -> GET /api/session/[id]                (load roleTitle/focusAreas/activePersonas/personaDurations/personaFocusAreas)
   -> GET /api/generate-agora-token
-  -> POST /api/invite-agent               (start first persona's agent session)
+  -> POST /api/invite-agent               (start first persona's agent session; technical persona may return a codingQuestion — see below)
   -> RTC join/publish mic
   -> RTM subscribe + AgoraVoiceAI events
   -> ConversationComponent renders PersonaSwitcher (read-only countdown status)
        -> countdown hits zero -> POST /api/stop-conversation + POST /api/invite-agent (timer-driven persona switch, see persona_handoff.md)
        -> last persona's countdown hits zero -> automatic interview end (same path as the manual "End conversation" button)
+       -> technical persona's 2nd panelist turn + codingQuestion present -> CodingQuestionPanel appears (structural turn count, not content parsing); voice-only, no code editor — candidate narrates their solution through the normal transcript pipeline; a fixed timer auto-closes the panel without a persona switch
   -> POST /api/stop-conversation           (call end, timer-driven or manual; RTM/agoraData NOT yet torn down)
   -> POST /api/session/[id]/report         (generate + persist feedback report; emails recruiterEmail via lib/mailer.ts on first report)
   -> debrief-offer stage: "Talk to the panel" / "Skip to my written report"
@@ -113,6 +114,7 @@ See [persona_handoff.md](L2/persona_handoff.md) for full detail. Summary: `Conve
 - `personaDurationsSeconds` — recruiter-configured per-persona time budget, seeds the countdown that drives auto-switch/auto-end
 - `isSwitchingPersona`, `switchError` — in-flight/error state for the switch UI
 - `onSwitchPersona(next, transcriptText): Promise<boolean>` — delegates the actual stop/invite calls up to `InterviewSession`, called internally by `ConversationComponent` when a countdown reaches zero (no longer candidate-triggered)
+- `codingQuestion?: CodingQuestion` — the live coding question, when the technical persona's focus areas matched
 
 `ConversationComponent` -> child UI components:
 

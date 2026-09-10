@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { reports, sessions } from '@/lib/db/schema';
+import { reports, sessions, candidateContext } from '@/lib/db/schema';
 import { buildFeedbackReport, type ReportTranscriptTurn } from '@/lib/report';
 import { sendRecruiterReportEmail } from '@/lib/mailer';
 import type { FeedbackReport } from '@/types/conversation';
@@ -38,11 +38,24 @@ export async function POST(
 
     const [existingReport] = await db.select().from(reports).where(eq(reports.sessionId, id));
 
+    const [existingContext] = await db
+      .select()
+      .from(candidateContext)
+      .where(eq(candidateContext.sessionId, id));
+    const context = existingContext?.context as Record<string, unknown> | undefined;
+    const codingQuestion = context?.coding_question as
+      | { question: string; testExamples: { input: string; output: string }[] }
+      | undefined;
+    const codingExercise = codingQuestion
+      ? { question: codingQuestion.question, testExamples: codingQuestion.testExamples }
+      : undefined;
+
     const report = await buildFeedbackReport({
       roleTitle: session.roleTitle,
       candidateName,
       focusAreas: session.focusAreas,
       transcript,
+      codingExercise,
     });
 
     await db
