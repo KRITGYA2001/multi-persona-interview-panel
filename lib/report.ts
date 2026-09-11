@@ -17,6 +17,10 @@ export interface BuildFeedbackReportInput {
   roleTitle: string;
   candidateName?: string;
   focusAreas: string[];
+  /** Which persona owns each focus area (session.personaFocusAreas) — lets the
+   *  heuristic fallback judge coverage from actual persona engagement instead
+   *  of literal keyword matching against free-form spoken language. */
+  personaFocusAreas?: Record<string, string[]>;
   transcript: ReportTranscriptTurn[];
   codingExercise?: {
     question: string;
@@ -69,7 +73,9 @@ function sanitizeHiringScore(
 // the LLM call itself fails — the candidate should never be left with no
 // report at all.
 function buildHeuristicReport(input: BuildFeedbackReportInput): FeedbackReport {
-  const { roleTitle, candidateName, focusAreas, transcript, codingExercise } = input;
+  const { roleTitle, candidateName, focusAreas, personaFocusAreas, transcript, codingExercise } = input;
+
+  const candidateTurnsByPersona = new Map<string, ReportTranscriptTurn[]>();
 
   const personas: FeedbackReportPersonaSection[] = PERSONA_IDS.filter((id) =>
     transcript.some((t) => t.persona === id),
@@ -78,6 +84,7 @@ function buildHeuristicReport(input: BuildFeedbackReportInput): FeedbackReport {
     const candidateTurns = transcript.filter(
       (t) => t.persona === id && t.speaker === 'candidate',
     );
+    candidateTurnsByPersona.set(id, candidateTurns);
     const wordCounts = candidateTurns.map((t) => t.text.trim().split(/\s+/).filter(Boolean).length);
     const totalWords = wordCounts.reduce((a, b) => a + b, 0);
     const avgWords = candidateTurns.length > 0 ? Math.round(totalWords / candidateTurns.length) : 0;
@@ -109,19 +116,38 @@ function buildHeuristicReport(input: BuildFeedbackReportInput): FeedbackReport {
     return { persona: id, label: def.label, strengths, concerns, notableQuotes };
   });
 
+  // Which persona owns each focus area, so coverage can be judged from actual
+  // candidate engagement with that panelist rather than fragile keyword
+  // matching against free-form spoken language (candidates virtually never
+  // say a focus-area's exact label out loud).
+  const ownerByFocusArea = new Map<string, string>();
+  if (personaFocusAreas) {
+    for (const [personaId, areas] of Object.entries(personaFocusAreas)) {
+      for (const area of areas) ownerByFocusArea.set(area, personaId);
+    }
+  }
+
   const candidateText = transcript
     .filter((t) => t.speaker === 'candidate')
     .map((t) => t.text.toLowerCase())
     .join(' ');
 
-  const focusAreaCoverage = focusAreas.map((focusArea) => ({
-    focusArea,
-    covered: focusArea
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 3)
-      .some((word) => candidateText.includes(word)),
-  }));
+  const focusAreaCoverage = focusAreas.map((focusArea) => {
+    const ownerPersona = ownerByFocusArea.get(focusArea);
+    if (ownerPersona) {
+      const ownerTurns = candidateTurnsByPersona.get(ownerPersona) ?? [];
+      return { focusArea, covered: ownerTurns.length > 0 };
+    }
+    // No persona mapping available — fall back to keyword matching.
+    return {
+      focusArea,
+      covered: focusArea
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 3)
+        .some((word) => candidateText.includes(word)),
+    };
+  });
 
   const totalCandidateTurns = transcript.filter((t) => t.speaker === 'candidate').length;
   const overallSummary =

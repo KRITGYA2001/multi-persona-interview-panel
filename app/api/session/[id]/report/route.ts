@@ -54,6 +54,7 @@ export async function POST(
       roleTitle: session.roleTitle,
       candidateName,
       focusAreas: session.focusAreas,
+      personaFocusAreas: session.personaFocusAreas as Record<string, string[]>,
       transcript,
       codingExercise,
     });
