@@ -5,7 +5,7 @@ import { candidateContext, sessions } from '@/lib/db/schema';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PERSONA_MINUTES = 5;
 const MIN_PERSONA_MINUTES = 1;
-const MAX_PERSONA_MINUTES = 30;
+const MAX_PERSONA_MINUTES = 60;
 
 function generateChannelName(): string {
   const timestamp = Date.now();

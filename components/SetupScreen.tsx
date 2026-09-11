@@ -17,7 +17,7 @@ const labelClass = 'text-xs font-medium uppercase tracking-wide text-muted-foreg
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_PERSONA_MINUTES = 5;
 const MIN_PERSONA_MINUTES = 1;
-const MAX_PERSONA_MINUTES = 30;
+const MAX_PERSONA_MINUTES = 60;
 
 function defaultPersonaDurations(): Record<PersonaId, number> {
   return PERSONA_IDS.reduce(
