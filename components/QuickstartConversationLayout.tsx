@@ -71,7 +71,9 @@ export function QuickstartConversationLayout({
 
         <main className="order-1 flex min-h-0 flex-1 flex-col lg:order-2 lg:border-l lg:border-border/50 lg:pl-6">
           <div className="flex min-h-0 flex-1 flex-col gap-4 pb-2 pt-3 md:pb-6">
-            {codingPanel && <div className="min-h-0 flex-1 overflow-y-auto">{codingPanel}</div>}
+            {codingPanel && (
+              <div className="min-h-[16rem] flex-1 overflow-y-auto">{codingPanel}</div>
+            )}
             <div className={codingPanel ? 'flex shrink-0 items-center justify-center' : 'flex min-h-0 flex-1 items-center justify-center'}>
               {visualizer}
             </div>

@@ -676,11 +676,15 @@ export default function ConversationComponent({
       }
       visualizer={
         <div
-          className="relative flex h-full min-h-[20rem] w-full max-w-4xl items-center justify-center"
+          className={
+            showCodingPanel
+              ? 'relative flex h-full min-h-[6rem] w-full max-w-4xl items-center justify-center'
+              : 'relative flex h-full min-h-[20rem] w-full max-w-4xl items-center justify-center'
+          }
           role="region"
           aria-label="AI agent status visualization"
         >
-          <AgentVisualizer state={visualizerState} size="lg" />
+          <AgentVisualizer state={visualizerState} size={showCodingPanel ? 'sm' : 'lg'} />
           {remoteUsers.map((user) => (
             <div key={user.uid} className="hidden">
               <RemoteUser user={user} />
